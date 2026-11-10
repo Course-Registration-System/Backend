@@ -40,7 +40,7 @@ MySQL 없이 H2로 실행됩니다 (`src/test/resources/application.yml`).
 
 - Lombok, JPA 등 ORM 은 쓰지 않습니다. SQL 을 직접 작성하는 것이 과목 산출물과 맞기 때문입니다.
 
-## 패키지 구조 (예정)
+## 패키지 구조
 
 ```
 com.crs.backend
