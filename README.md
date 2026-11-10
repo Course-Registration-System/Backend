@@ -9,6 +9,7 @@
 | 언어 | Java 21 |
 | 프레임워크 | Spring Boot 4.1 (Web MVC, JDBC, Validation) |
 | DB 접근 | JdbcTemplate + 직접 작성한 SQL (ORM 사용 안 함) |
+| 포맷터 | Spotless (Palantir Java Format) |
 | 빌드 | Gradle (wrapper 포함, 별도 설치 불필요) |
 | DB | MySQL 8.4 (테스트는 H2 인메모리) |
 
@@ -27,6 +28,14 @@
 4. 확인: http://localhost:8080/api/health → `{"status":"ok", ...}`
 
 테이블은 자동 생성되지 않습니다. DDL 은 Docs 레포의 물리적 데이터 모델을 기준으로 SQL 파일로 관리하고, MySQL 에 직접 실행합니다.
+
+## 코드 포맷
+
+```bash
+./gradlew spotlessApply   # 전체 파일을 규칙에 맞게 고침
+```
+
+`./gradlew build` 에 포맷 검사가 포함되어 있어, 포맷이 어긋나면 CI 가 실패합니다. PR 올리기 전에 한 번 실행하세요. IntelliJ 에서는 Settings → Plugins 에서 "palantir-java-format" 을 설치하면 저장할 때 같은 규칙이 적용됩니다.
 
 ## 테스트
 
