@@ -1,0 +1,7 @@
+# 테스트는 MySQL 없이 H2 인메모리 DB로 돌립니다.
+spring:
+  datasource:
+    url: jdbc:h2:mem:crs;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
