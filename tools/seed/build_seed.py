@@ -3,8 +3,8 @@
 사용: python -X utf8 tools/seed/build_seed.py   (표준 라이브러리만 쓴다. 난수 시드가 고정이라 매번 같은 결과가 나온다)
 
 만드는 파일 (모두 생성물이다. 직접 고치지 말고 이 생성기를 고친다)
-- src/main/resources/db/seed/R__seed_dev.sql        기본 시드. Flyway 가 서버 시작 시 적용한다
-- src/main/resources/db/scenario/t3_grade.sql       T3(2027-1 성적 입력 기간) 시점으로 옮기는 오버레이
+- src/main/resources/db/seed/R__seed_dev.sql        기본 시드(T0, 2026-2 성적 입력 기간). Flyway 가 서버 시작 시 적용한다
+- src/main/resources/db/scenario/s1~s3_*.sql       뒤 시점으로 옮기는 오버레이(성적 마감 → 신청일 → 정정)
 - src/test/java/com/crs/backend/support/SeedFixtures.java   테스트에서 사례를 이름으로 가리키는 상수
 - docs/seed-data.md                                 모듈별 안내(시점, 계정, 사례)
 
@@ -23,14 +23,14 @@ import random
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[1]
 OUT_SEED = REPO / "src/main/resources/db/seed/R__seed_dev.sql"
-OUT_T3 = REPO / "src/main/resources/db/scenario/t3_grade.sql"
+OUT_SCENARIO = REPO / "src/main/resources/db/scenario"
 OUT_FIXTURES = REPO / "src/test/java/com/crs/backend/support/SeedFixtures.java"
 OUT_GUIDE = REPO / "docs/seed-data.md"
 rng = random.Random(20261118)
 
 # 모든 mock 계정의 비밀번호는 test1234! (BCrypt cost 10, Spring BCryptPasswordEncoder와 호환되는 $2a$ 형식)
 PWD_HASH = "$2a$10$mVtkuC8t.ybJShFMmg7dAePnho.f1IpD92TXrTXipF.OhtbWdF/.S"
-SNAPSHOT = datetime(2027, 2, 10, 18, 0)
+SNAPSHOT = datetime(2026, 12, 21, 10, 0)   # T0: 2026-2 성적 입력 기간
 ADMIN = "9001"
 GRAD_CREDITS = 130          # 졸업 이수 학점
 GRAD_SEMESTERS = 8          # 졸업에 필요한 정규학기 수
@@ -94,7 +94,7 @@ for dept, names in MAJOR_NAMES.items():
 for no, nm, crdt, cmpl, ev, rcmd in GEN:
     COURSES[f"103{no:04d}"] = dict(cd=f"103{no:04d}", dept=103, nm=nm, crdt=crdt, cmpl=cmpl, eval=ev, rcmd=rcmd, term="BOTH")
 CHAPEL = "1030001"
-# 2027-1에 처음 개설하는 교양. 학생 대부분이 먼저 담아 수강생 10명 이상(상대평가 대상) 강의가 되게 한다
+# 2026-2에 처음 개설한 교양. 학생 대부분이 들어 수강생 10명 이상(상대평가 대상)인 성적 입력 시연 강의가 된다
 POPULAR = "1030018"
 COURSES[POPULAR] = dict(cd=POPULAR, dept=103, nm="데이터리터러시", crdt=3, cmpl="GEN_ELEC", eval="GRADE", rcmd=None,
                         term="NEW")
@@ -243,6 +243,7 @@ for sem, y, t in SEMS:
                 open_lecture(sem, cd, **kw)
         if sem == TARGET:
             open_lecture(sem, "1030007", sect=2)           # 같은 과목 2분반
+        if sem == CUR:
             open_lecture(sem, POPULAR, cap=60, slots=[("MON", mins(9), mins(10, 15)), ("WED", mins(9), mins(10, 15))],
                          room_fixed="01101", weights=False)["wt"] = WEIGHTS[0]   # 고정값(난수를 쓰지 않음)
     else:
@@ -280,7 +281,8 @@ FORCED = {
     "20250003": {9: [("1030002", "P", "N"), ("1030017", "P", "N")]},
 }
 ONLY_FORCED = {("20250003", 9)}
-PIN_SEM = {("20240001", 9): "ALL_A-", ("20240002", 9): "JUST_UNDER_4", ("20250002", 6): "ALL_A0"}
+PIN_SEM = {("20240001", 9): "ALL_A-", ("20240002", 9): "JUST_UNDER_4", ("20250002", 6): "ALL_A0",
+           ("20260001", 9): "ALL_A-"}   # 20260001: 시연 강의(데이터리터러시)까지 A-면 평점 4.0 → 2027-1 최대학점 21
 # 계절 수강: {학기: {과목: (인원, 후보 학번 순서)}}. 이미 들은 과목이면 다음 후보로 넘어간다
 SEASONAL_ENROLL = {8: {"1030007": (2, ["20260001", "20240003", "20260002", "20250001"]),
                        "1010006": (1, ["20260003", "20260001"])},
@@ -376,7 +378,7 @@ def candidates(std, sem, yr):
     order = []
     if CHAPEL not in taken:
         order.append(CHAPEL)
-    if sem == TARGET:
+    if sem == CUR:
         order.append(POPULAR)
     order += [cd for cd in own if COURSES[cd]["rcmd"] == yr]
     order += [cd for cd in gen_req if COURSES[cd]["rcmd"] <= yr]
@@ -540,10 +542,7 @@ for sem, y, t in sorted(SEMS, key=lambda x: order_key(x[0])):
         relative_fix(lec, rows)
         lec["gstat"] = "CONFIRMED"
         if sem == 10:
-            lec["gstat"] = WINTER_STATE[lec["cd"]]
             assert rows, f"겨울 강의 수강생 없음: {lec['cd']}"
-            if lec["gstat"] == "ENTERING":
-                rows[-1]["grade"] = dict(mid=None, fin=None, hw=None, att=None, tot=None, ltr=None)
 
 # ---------------------------------------------------------------- 특별 사례
 # 2026-2 정정 기간에 취소한 신청(성적 없음), 관리자 수동 추가 1건
@@ -587,48 +586,65 @@ for std, sem, cd in TA:
     find_lec(sem, cd)["keep"] = True
 
 
-# T2(정정 기간) 차단 사례: 다른 이유로는 막히지 않고 시간 겹침·최대학점 초과로만 막히는 장바구니 강의
-def enrolled_in(std, sem):
-    return [e["lec"] for e in ENR if e["std"] == std and e["lec"]["sem"] == sem and e["stat"] == "ENROLLED"]
-
-
+# T1(2학년 신청일) 시연 사례: 장바구니에 하나를 더 담아, 신청할 때 한 가지 규칙으로만 막히거나(또는 허용되게) 한다
 # 다른 사례로 쓰는 강의. 한 강의가 여러 사례를 겸하지 않게 새 사례 후보에서 뺀다
-SPECIAL = {id(FULL), id(ONE_LEFT)} | {id(find_lec(TARGET, cd)) for cd in CASE_COURSES}
+SPECIAL = {id(FULL), id(ONE_LEFT)} | {id(find_lec(TARGET, cd)) for cd in CASE_COURSES if cd != POPULAR}
+PLAN = {std: [c[0] for c in chosen] for std, lvl, chosen in PLANNED if lvl == 2}
+TARGET_LECS = sorted([l for l in LECTURES if l["sem"] == TARGET], key=lambda l: (l["cd"], l["sect"]))
 
 
-def only_blocked_by_rule(std, lec):
-    mine = enrolled_in(std, TARGET)
-    if id(lec) in SPECIAL:
-        return False
-    if lec["stat"] != "OPEN" or lec["cd"] == CHAPEL or lec is FULL or lec is ONE_LEFT or cnt(lec) >= lec["cap"]:
+def extra_ok(std, lec, need_prereq=True):
+    """std 가 계획(장바구니)에 더 담을 수 있고, 정원·폐강·강의실·중복 과목으로는 막히지 않는 강의인가."""
+    mine = PLAN[std]
+    if id(lec) in SPECIAL or lec["stat"] != "OPEN" or lec["cd"] == CHAPEL or cnt(lec) >= lec["cap"]:
         return False
     if lec["cls"] == "OFFLINE" and lec["room"] is None:
         return False
-    taken = {cd for _, cd, _ in history(std, TARGET)} | {l["cd"] for l in mine}
-    if lec["cd"] in taken or any(c[0] == std and c[1] is lec for c in CART):
+    if lec["cd"] in {cd for _, cd, _ in history(std, TARGET)} | {l["cd"] for l in mine}:
         return False
-    return all(passed(std, p, g, TARGET) for p, g in PREQ.get(lec["cd"], []))
+    if any(c[0] == std and c[1] is lec for c in CART):
+        return False
+    ok = all(passed(std, p, g, TARGET) for p, g in PREQ.get(lec["cd"], []))
+    return ok if need_prereq else not ok
 
 
-T2_POOL = [s for s in sorted(ST) if enrolled_in(s, TARGET) and s not in (
-    "20240001", "20240002", "20240003", "20240004", "20240005", "20250002")]   # 다른 사례 학생은 뺀다
-TARGET_LECS = sorted([l for l in LECTURES if l["sem"] == TARGET], key=lambda l: (l["cd"], l["sect"]))
-OVERLAP = OVERMAX = None
-for std in T2_POOL:
-    mine, mx = enrolled_in(std, TARGET), MAXC[(std, TARGET)]
-    for lec in TARGET_LECS:
-        if OVERLAP is None and only_blocked_by_rule(std, lec) and any(overlap(lec["slot"], l["slot"]) for l in mine)                 and credit_excl_chapel(mine + [lec]) <= mx:
-            OVERLAP = (std, lec, next(l for l in mine if overlap(lec["slot"], l["slot"])))
-for std in T2_POOL:
-    if OVERLAP and std == OVERLAP[0]:
-        continue
-    mine, mx = enrolled_in(std, TARGET), MAXC[(std, TARGET)]
-    for lec in TARGET_LECS:
-        if OVERMAX is None and only_blocked_by_rule(std, lec) and not any(overlap(lec["slot"], l["slot"]) for l in mine)                 and credit_excl_chapel(mine + [lec]) > mx:
-            OVERMAX = (std, lec, credit_excl_chapel(mine), mx)
-assert OVERLAP and OVERMAX, (OVERLAP, OVERMAX)
-CART.append((OVERLAP[0], OVERLAP[1], sched_of(TARGET, "CART")[2] + timedelta(days=3)))
-CART.append((OVERMAX[0], OVERMAX[1], sched_of(TARGET, "CART")[2] + timedelta(days=3, hours=1)))
+def pick(std, cond):
+    return next((l for l in TARGET_LECS if cond(l)), None)
+
+
+RICH = "20260001"   # 2026-2 평점 4.0 → 최대 21. 계획 18학점 + 3학점을 더 담아 21학점까지 신청된다
+assert MAXC[(RICH, TARGET)] == 21 and RICH in PLAN, (MAXC.get((RICH, TARGET)), RICH in PLAN)
+RICH_EXTRA = pick(RICH, lambda l: extra_ok(RICH, l) and not any(overlap(l["slot"], m["slot"]) for m in PLAN[RICH])
+                  and credit_excl_chapel(PLAN[RICH] + [l]) <= 21)
+OVERMAX, OVERLAP, PREREQ = None, None, None
+for std in [s for s in sorted(PLAN) if s != RICH]:   # 시간 겹침으로만 막힘(최대학점에 여유가 있어야 한다)
+    mx = MAXC[(std, TARGET)]
+    l = pick(std, lambda l: extra_ok(std, l) and credit_excl_chapel(PLAN[std] + [l]) <= mx
+             and [m for m in PLAN[std] if overlap(l["slot"], m["slot"])]
+             and all(id(m) not in SPECIAL and m["cd"] != CHAPEL for m in PLAN[std] if overlap(l["slot"], m["slot"])))
+    if l:
+        OVERLAP = (std, l, next(m for m in PLAN[std] if overlap(l["slot"], m["slot"])))
+        break
+for std in [s for s in sorted(PLAN) if s not in (RICH, OVERLAP and OVERLAP[0])]:   # 최대학점 초과로만 막힘
+    mx = MAXC[(std, TARGET)]
+    l = pick(std, lambda l: extra_ok(std, l) and not any(overlap(l["slot"], m["slot"]) for m in PLAN[std])
+             and credit_excl_chapel(PLAN[std] + [l]) > mx)
+    if l:
+        OVERMAX = (std, l, credit_excl_chapel(PLAN[std]))
+        break
+used = {RICH, OVERLAP and OVERLAP[0], OVERMAX and OVERMAX[0]}
+for std in sorted(PLAN, key=lambda s: (s in used, s)):   # 선수과목 미이수로 막힘
+    l = pick(std, lambda l: extra_ok(std, l, need_prereq=False) and PREQ.get(l["cd"])
+             and not any(overlap(l["slot"], m["slot"]) for m in PLAN[std]))
+    if l:
+        PREREQ = (std, l)
+        break
+assert RICH_EXTRA and OVERMAX and OVERLAP and PREREQ, (RICH_EXTRA, OVERMAX, OVERLAP, PREREQ)
+t1_cart = sched_of(TARGET, "CART")[2] + timedelta(days=3)
+CART.append((RICH, RICH_EXTRA, t1_cart))
+CART.append((OVERMAX[0], OVERMAX[1], t1_cart + timedelta(minutes=10)))
+CART.append((OVERLAP[0], OVERLAP[1], t1_cart + timedelta(minutes=20)))
+CART.append((PREREQ[0], PREREQ[1], t1_cart + timedelta(minutes=30)))
 
 # ---------------------------------------------------------------- 검증(생성기 안에서)
 assert "20230001" in GRADUATED and "20230002" not in GRADUATED, GRADUATED
@@ -681,160 +697,208 @@ def insert(table, cols, rows, chunk=50):
     return "\n".join(out)
 
 
+# ---------------------------------------------------------------- 시점과 단계
+# T0 기본 시드: 2026-2 성적 입력 기간. 2026-2는 대부분 제출, 시연 강의는 입력중(20260001 빈칸), 1개는 미입력
+# s1 성적 마감(12-23 ~ 01-15): 2026-2 확정, 진급·졸업·복학, 2027 신입생 계정, 2027-1 최대학점
+# s2 신청일까지(01-18 ~ 02-11 10:05): 겨울학기 성적 확정, 장바구니, 4·3학년 신청(02-09·10)
+# s3 정정까지(02-11 ~ 03-04 11:00): 2·1학년 신청(02-11·12), 현재학기 2027-1로 전환(03-02)
+T0 = SNAPSHOT
+T1 = datetime(2027, 2, 11, 10, 5)
+T2 = datetime(2027, 3, 4, 11, 0)
+S1_CNFM = datetime(2026, 12, 28, 10, 0)
+S2_CNFM = datetime(2027, 1, 25, 10, 0)
+
+DEMO_LEC = find_lec(CUR, POPULAR)          # 성적 입력 시연 강의(입력중, 20260001 빈칸)
+DEMO_PROF = DEMO_LEC["prof"]
+PINNED = {RICH}   # 시연 학생의 성적은 시연 강의 하나만 비운다
+NOTENT = sorted([l for l in LECTURES if l["sem"] == CUR and l is not DEMO_LEC and COURSES[l["cd"]]["eval"] == "GRADE"
+                 and l["wt"] and l["cd"] != "1020004"
+                 and 2 <= sum(1 for e in ENR if e["lec"] is l and e["stat"] == "ENROLLED") <= 9
+                 and not any(e["lec"] is l and e["std"] in PINNED for e in ENR)],
+                key=lambda l: (l["prof"] != DEMO_PROF, l["no"]))[0]   # 미입력 강의(관리자 화면의 미입력 확인)
+ENR.sort(key=lambda e: (order_key(e["lec"]["sem"]), e["lec"]["no"], e["std"]))
+BASE_ENR = [e for e in ENR if e["lec"]["sem"] <= 10]
+S2_ENR = [e for e in ENR if e["lec"]["sem"] == TARGET]       # 4·3학년(02-09·10) + 신청 후 취소 1건
+
+# s3: 2·1학년 신청(장바구니 순서, 정원 안에서)
+S3_ENR, extra = [], {}
+for std, lvl, chosen in sorted(PLANNED, key=lambda x: (-x[1], x[0])):
+    for i, (lec, _, rt) in enumerate(chosen):
+        if lec["stat"] != "OPEN" or cnt(lec) + extra.get(id(lec), 0) >= lec["cap"]:
+            continue
+        extra[id(lec)] = extra.get(id(lec), 0) + 1
+        S3_ENR.append(dict(std=std, lec=lec, retake=rt, enrl_dtm=enroll_time(std, TARGET, i)))
+
+
+def t0_gstat(l):
+    if l["sem"] < CUR:
+        return "CONFIRMED"
+    if l["sem"] == CUR:
+        return "NOT_ENTERED" if l is NOTENT else ("ENTERING" if l is DEMO_LEC else "SUBMITTED")
+    return "NOT_ENTERED"
+
+
+def grade_row(e, blank=False):
+    g = e["grade"]
+    if blank:
+        return (e["std"], e["lec"]["no"], None, None, None, None, None, None)
+    return (e["std"], e["lec"]["no"], g["mid"], g["fin"], g["hw"], g["att"], g["tot"], g["ltr"])
+
+
+def yr_stat_t0(std):
+    on_leave = CUR in ST[std]["leave"] or std in STILL_ON_LEAVE
+    return yr_level(std, CUR), "ON_LEAVE" if on_leave else "ATTENDING"
+
+
+T0_STUDENTS = [s_ for s_ in ST if ST[s_]["entry"] <= 2026]
+NEW_STUDENTS = [s_ for s_ in ST if ST[s_]["entry"] == 2027]
+GCOLS = ["std_no", "lec_no", "mid_scr", "fin_scr", "hw_scr", "att_scr", "tot_scr", "ltr_grd"]
+
+# ---------------------------------------------------------------- 기본 시드(T0)
 TABLES = ["grade", "enrollment", "course_cart", "teaching_assistant_assignment", "lecture_time_slot", "lecture",
           "semester_maximum_credit", "academic_schedule", "prerequisite_course", "course", "classroom", "semester",
           "administrator", "professor", "student", "department", "user_account"]
 sql = ["-- 개발·테스트·시연용 시드. tools/seed/build_seed.py 로 생성한다. 직접 고치지 말고 생성기를 고친다.",
-       f"-- 기준 시각(T0) {SNAPSHOT:%Y-%m-%d %H:%M}: 현재 학기 2026-2(확정 완료), 신청 대상 학기 2027-1(4·3학년 신청 끝, 2·1학년 장바구니만)",
+       f"-- T0 {T0:%Y-%m-%d %H:%M}: 2026-2 성적 입력 기간. 2027-1 강의는 개설됐고 장바구니·신청·최대학점은 아직 없다.",
        "-- 모든 계정 비밀번호: test1234! (BCrypt)",
        "-- Flyway 반복 마이그레이션이다. 이 파일이 바뀌면 다음 서버 시작 때 모든 테이블을 비우고 다시 넣는다.",
        "SET NAMES utf8mb4;", "SET FOREIGN_KEY_CHECKS = 0;"]
 sql += [f"DELETE FROM {t};" for t in TABLES]
 sql += ["SET FOREIGN_KEY_CHECKS = 1;", ""]
+
+
+def acct(s_):
+    return (s_, PWD_HASH, ST[s_]["nm"], f"{s_}@example.ac.kr", "STUDENT", "ACTIVE")
+
+
 accts = [(ADMIN, PWD_HASH, "관리자", "admin@example.ac.kr", "ADMIN", "ACTIVE")]
 accts += [(p, PWD_HASH, nm, f"prof{p}@example.ac.kr", "PROFESSOR", st) for p, nm, _, _, st, _ in PROFS]
-accts += [(s, PWD_HASH, v["nm"], f"{s}@example.ac.kr", "STUDENT", "ACTIVE") for s, v in ST.items()]
-sql.append(insert("user_account", ["usr_no", "pwd", "usr_nm", "email", "role", "acct_stat"], accts))
+accts += [acct(s_) for s_ in T0_STUDENTS]
+ACOLS = ["usr_no", "pwd", "usr_nm", "email", "role", "acct_stat"]
+sql.append(insert("user_account", ACOLS, accts))
 sql.append(insert("department", ["dept_no", "dept_nm"], DEPTS))
 sql.append(insert("student", ["std_no", "dept_no", "yr_lvl", "std_stat"],
-                  [(s, v["dept"], FINAL[s][0], FINAL[s][1]) for s, v in ST.items()]))
+                  [(s_, ST[s_]["dept"], *yr_stat_t0(s_)) for s_ in T0_STUDENTS]))
 sql.append(insert("professor", ["prof_no", "dept_no", "office"], [(p, d, o) for p, _, d, o, _, _ in PROFS]))
 sql.append(insert("administrator", ["emp_no"], [(ADMIN,)]))
 sql.append(insert("semester", ["sem_no", "yr", "sem_type", "cur_sem_yn"],
-                  [(s, y, t, "Y" if s == CUR else "N") for s, y, t in SEMS]))
+                  [(s_, y, t, "Y" if s_ == CUR else "N") for s_, y, t in SEMS]))
 sql.append(insert("classroom", ["room_cd", "room_nm"], ROOMS))
 sql.append(insert("course", ["crs_cd", "dept_no", "crs_nm", "crdt", "cmpl_type", "eval_type", "rcmd_yr_lvl"],
                   [(c["cd"], c["dept"], c["nm"], c["crdt"], c["cmpl"], c["eval"], c["rcmd"]) for c in COURSES.values()]))
 sql.append(insert("prerequisite_course", ["crs_cd", "prereq_crs_cd", "min_req_grd"], PREREQS))
 srows, n = [], 0
-for s, _, _ in SEMS:
-    for typ, lvl, a, b in SCHED[s]:
+SCHD_NO = {}
+for s_, _, _ in SEMS:
+    for typ, lvl, a, b in SCHED[s_]:
         n += 1
-        srows.append((n, s, typ, lvl, a, b))
+        srows.append((n, s_, typ, lvl, a, b))
+        SCHD_NO[(s_, typ, lvl)] = n
 sql.append(insert("academic_schedule", ["schd_no", "sem_no", "schd_type", "tgt_yr_lvl", "start_dtm", "end_dtm"], srows))
 sql.append(insert("semester_maximum_credit", ["std_no", "sem_no", "max_crdt"],
-                  sorted([(s, sem, m) for (s, sem), m in MAXC.items()], key=lambda r: (r[1], r[0]))))
+                  sorted([(s_, sem, m) for (s_, sem), m in MAXC.items() if sem <= 10], key=lambda r: (r[1], r[0]))))
+base_cnt = lambda l: sum(1 for e in BASE_ENR if e["lec"] is l and e["stat"] == "ENROLLED")
 lrows = []
 for l in LECTURES:
-    gst = l.get("gstat", "NOT_ENTERED")
+    gst = t0_gstat(l)
     cdt = sched_of(l["sem"], "GRADE")[3] + timedelta(days=5) if gst == "CONFIRMED" else None
     wt = l["wt"] or (None,) * 4
-    lrows.append((l["no"], l["cd"], l["sem"], l["prof"], l["sect"], l["cap"], cnt(l), l["stat"], l["eng"], l["exmp"],
+    lrows.append((l["no"], l["cd"], l["sem"], l["prof"], l["sect"], l["cap"], base_cnt(l), l["stat"], l["eng"], l["exmp"],
                   f"plans/{l['sem']}/{l['cd']}-{l['sect']}.pdf", *wt, gst, ADMIN if cdt else None, cdt))
 sql.append(insert("lecture", ["lec_no", "crs_cd", "sem_no", "prof_no", "sect_no", "cap", "enrl_cnt", "lec_stat",
                               "eng_lec_yn", "rel_grd_exmp_yn", "plan_file", "mid_wt", "fin_wt", "hw_wt", "att_wt",
                               "grd_stat", "cnfm_emp_no", "cnfm_dtm"], lrows))
 sql.append(insert("lecture_time_slot", ["lec_no", "dow", "start_tm", "end_tm", "cls_type", "room_cd"],
                   [(l["no"], d, hm(a), hm(b), l["cls"], l["room"]) for l in LECTURES for d, a, b in l["slot"]]))
-sql.append(insert("teaching_assistant_assignment", ["lec_no", "std_no"], [(find_lec(sem, cd)["no"], s) for s, sem, cd in TA]))
-sql.append(insert("course_cart", ["std_no", "lec_no", "reg_dtm"], sorted({(s, l["no"], d) for s, l, d in CART})))
-ENR.sort(key=lambda e: (order_key(e["lec"]["sem"]), e["lec"]["no"], e["std"]))
-sql.append(insert("enrollment", ["std_no", "lec_no", "enrl_stat", "retake_yn", "proc_type", "enrl_dtm", "cncl_dtm"],
-                  [(e["std"], e["lec"]["no"], e["stat"], e["retake"], e["proc"], e["enrl_dtm"], e["cncl_dtm"]) for e in ENR]))
-sql.append(insert("grade", ["std_no", "lec_no", "mid_scr", "fin_scr", "hw_scr", "att_scr", "tot_scr", "ltr_grd"],
-                  [(e["std"], e["lec"]["no"], e["grade"]["mid"], e["grade"]["fin"], e["grade"]["hw"], e["grade"]["att"],
-                    e["grade"]["tot"], e["grade"]["ltr"]) for e in ENR if e["grade"] and e["stat"] == "ENROLLED"]))
+sql.append(insert("teaching_assistant_assignment", ["lec_no", "std_no"], [(find_lec(sem, cd)["no"], s_) for s_, sem, cd in TA]))
+ECOLS = ["std_no", "lec_no", "enrl_stat", "retake_yn", "proc_type", "enrl_dtm", "cncl_dtm"]
+erow = lambda e: (e["std"], e["lec"]["no"], e["stat"], e["retake"], e["proc"], e["enrl_dtm"], e["cncl_dtm"])
+sql.append(insert("enrollment", ECOLS, [erow(e) for e in BASE_ENR]))
+base_grades = []
+for e in BASE_ENR:
+    if not e["grade"] or e["stat"] != "ENROLLED" or e["lec"]["sem"] == 10 or e["lec"] is NOTENT:
+        continue
+    base_grades.append(grade_row(e, blank=e["lec"] is DEMO_LEC and e["std"] == RICH))
+sql.append(insert("grade", GCOLS, base_grades))
 OUT_SEED.write_text("\n\n".join(sql) + "\n", encoding="utf-8", newline="\n")
 
-# ---------------------------------------------------------------- 시점
-T0 = SNAPSHOT                          # 기준. 열린 기간 없음
-T1 = datetime(2027, 2, 11, 11, 0)      # 2학년 수강신청
-T2 = datetime(2027, 3, 4, 11, 0)       # 정정(전 학년)
-T3 = datetime(2027, 6, 20, 10, 0)      # 2027-1 성적 입력 (오버레이 필요)
+
+# ---------------------------------------------------------------- 오버레이
+def write_overlay(name, title, parts):
+    head = [f"-- {title}. tools/seed/build_seed.py 로 생성한다.",
+            "-- 앞 단계까지 적용한 뒤 한 번 적용한다. 시연 중 앱 기능으로 이미 처리한 내용(입력한 점수, 계산한 최대학점, 만든 계정)은 덮어쓰지 않는다.",
+            "SET NAMES utf8mb4;", ""]
+    (OUT_SCENARIO / f"{name}.sql").write_text("\n\n".join(head + [p_ for p_ in parts if p_]) + "\n",
+                                                encoding="utf-8", newline="\n")
 
 
+def keep_existing(stmt, key_col):
+    """INSERT 를 이미 있는 행은 그대로 두는 INSERT 로 바꾼다."""
+    return stmt.replace(";\nINSERT", f"\nON DUPLICATE KEY UPDATE {key_col} = {key_col};\nINSERT").rstrip(";") + \
+        f"\nON DUPLICATE KEY UPDATE {key_col} = {key_col};"
+
+
+rich_demo = next(e for e in ENR if e["lec"] is DEMO_LEC and e["std"] == RICH)
+g = rich_demo["grade"]
+s1 = [f"UPDATE grade SET mid_scr = {g['mid']}, fin_scr = {g['fin']}, hw_scr = {g['hw']}, att_scr = {g['att']}, "
+      f"tot_scr = {g['tot']}, ltr_grd = {q(g['ltr'])} WHERE std_no = {q(RICH)} AND lec_no = {DEMO_LEC['no']} AND ltr_grd IS NULL;",
+      keep_existing(insert("grade", GCOLS, [grade_row(e) for e in ENR if e["lec"] is NOTENT and e["stat"] == "ENROLLED"]),
+                    "ltr_grd"),
+      f"UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = {q(ADMIN)}, cnfm_dtm = {q(S1_CNFM)} "
+      f"WHERE sem_no = {CUR} AND grd_stat <> 'CONFIRMED';"]
+for s_ in T0_STUDENTS:
+    if yr_stat_t0(s_) != FINAL[s_]:
+        s1.append(f"UPDATE student SET yr_lvl = {FINAL[s_][0]}, std_stat = {q(FINAL[s_][1])} WHERE std_no = {q(s_)};")
+s1.append(keep_existing(insert("user_account", ACOLS, [acct(s_) for s_ in NEW_STUDENTS]), "usr_no"))
+s1.append(keep_existing(insert("student", ["std_no", "dept_no", "yr_lvl", "std_stat"],
+                               [(s_, ST[s_]["dept"], *FINAL[s_]) for s_ in NEW_STUDENTS]), "std_no"))
+s1.append(keep_existing(insert("semester_maximum_credit", ["std_no", "sem_no", "max_crdt"],
+                               sorted([(s_, sem, m) for (s_, sem), m in MAXC.items() if sem == TARGET])), "max_crdt"))
+write_overlay("s1_grade_close", "s1 성적 마감(2026-12-23 ~ 2027-01-15): 2026-2 확정, 진급·졸업·복학, 2027 신입생 계정, 2027-1 최대학점", s1)
+
+s2 = [insert("grade", GCOLS, [grade_row(e) for e in ENR if e["lec"]["sem"] == 10 and e["stat"] == "ENROLLED"]),
+      f"UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = {q(ADMIN)}, cnfm_dtm = {q(S2_CNFM)} WHERE sem_no = 10;",
+      insert("course_cart", ["std_no", "lec_no", "reg_dtm"], sorted({(s_, l["no"], d) for s_, l, d in CART})),
+      insert("enrollment", ECOLS, [erow(e) for e in S2_ENR])]
+for l in sorted({id(e["lec"]): e["lec"] for e in S2_ENR}.values(), key=lambda l: l["no"]):
+    s2.append(f"UPDATE lecture SET enrl_cnt = {cnt(l)} WHERE lec_no = {l['no']};")
+write_overlay("s2_enroll_day", f"s2 신청일까지(2027-01-18 ~ {T1:%m-%d %H:%M}): 겨울학기 성적 확정, 장바구니, 4·3학년 수강신청", s2)
+
+s3 = [insert("enrollment", ["std_no", "lec_no", "enrl_stat", "retake_yn", "proc_type", "enrl_dtm"],
+             [(e["std"], e["lec"]["no"], "ENROLLED", e["retake"], "STUDENT", e["enrl_dtm"])
+              for e in sorted(S3_ENR, key=lambda e: (e["lec"]["no"], e["std"]))])]
+for l in sorted({id(e["lec"]): e["lec"] for e in S3_ENR}.values(), key=lambda l: l["no"]):
+    s3.append(f"UPDATE lecture SET enrl_cnt = {cnt(l) + extra[id(l)]} WHERE lec_no = {l['no']};")
+s3 += [f"UPDATE semester SET cur_sem_yn = 'N' WHERE sem_no = {CUR};",
+       f"UPDATE semester SET cur_sem_yn = 'Y' WHERE sem_no = {TARGET};"]
+write_overlay("s3_adjust", f"s3 정정 기간까지(2027-02-11 ~ {T2:%m-%d %H:%M}): 2·1학년 수강신청, 현재학기 2027-1로 전환(03-02)", s3)
+
+
+# ---------------------------------------------------------------- 사례(안내·상수용)
 def lec_label(l):
     return f"{l['no']}번 {COURSES[l['cd']]['nm']}({l['cd']}-{l['sect']})"
 
 
 def gpa_txt(std, sem):
-    g = sem_gpa(std, sem)
-    return "없음" if g is None else f"{g:.4f}"
+    g_ = sem_gpa(std, sem)
+    return "없음" if g_ is None else f"{g_:.4f}"
 
 
 tl = lambda cd, sect=1: find_lec(TARGET, cd, sect)
-
-# ---------------------------------------------------------------- T3 오버레이
-# T0 → T3 사이에 일어난 일: 2·1학년 수강신청(02-11·12), 겨울학기 성적 확정, 현재학기 전환(2027-1), 2027-1 성적 입력 시작
-OV_ENR, extra = [], {}
-for std, lvl, chosen in sorted(PLANNED, key=lambda x: (-x[1], x[0])):
-    for i, (lec, _, rt) in enumerate(chosen):
-        if lec["stat"] != "OPEN" or cnt(lec) + extra.get(id(lec), 0) >= lec["cap"]:
-            continue
-        extra[id(lec)] = extra.get(id(lec), 0) + 1
-        OV_ENR.append(dict(std=std, lec=lec, retake=rt, enrl_dtm=enroll_time(std, TARGET, i)))
-
-
-def t3_rows(lec):
-    base = [e for e in ENR if e["lec"] is lec and e["stat"] == "ENROLLED"]
-    return sorted([(e["std"], e["retake"]) for e in base] + [(e["std"], e["retake"]) for e in OV_ENR if e["lec"] is lec])
-
-
-def gradable(l):
-    return (l["sem"] == TARGET and l["stat"] == "OPEN" and COURSES[l["cd"]]["eval"] == "GRADE" and l["wt"]
-            and 3 <= len(t3_rows(l)) <= 9 and id(l) not in SPECIAL and l is not OVERLAP[1] and l is not OVERMAX[1])
-
-
-T3_PICK = sorted([l for l in LECTURES if gradable(l)], key=lambda l: (l["prof"] != "100001", l["no"]))
-T3_ENTERING, T3_SUBMITTED = T3_PICK[0], T3_PICK[1]
-T3_RELATIVE = sorted([l for l in LECTURES if l["sem"] == TARGET and l["stat"] == "OPEN" and l["wt"]
-                      and COURSES[l["cd"]]["eval"] == "GRADE" and len(t3_rows(l)) >= 10],
-                     key=lambda l: (l["exmp"] == "Y" or l["eng"] == "Y", l["no"]))
-assert T3_RELATIVE, "T3에 상대평가 대상(10명 이상) 강의가 없음"
-T3_GRADES = []   # (std, lec, grade dict)
-for lec, st in ((T3_ENTERING, "ENTERING"), (T3_SUBMITTED, "SUBMITTED")):
-    rows = t3_rows(lec)
-    for i, (std, rt) in enumerate(rows):
-        empty = st == "ENTERING" and i == len(rows) - 1
-        g = dict(mid=None, fin=None, hw=None, att=None, tot=None, ltr=None) if empty else \
-            score_grade(lec, ST[std]["ab"], None, rt)
-        T3_GRADES.append((std, lec, g))
-    lec["t3_gstat"] = st
-W_ENTERING, W_SUBMITTED = find_lec(10, "1030006"), find_lec(10, "1030010")
-W_FILL = [(e["std"], e["lec"], score_grade(e["lec"], ST[e["std"]]["ab"], None, e["retake"]))
-          for e in ENR if e["lec"] is W_ENTERING and e["grade"] and e["grade"]["ltr"] is None]
-W_CNFM = datetime(2027, 2, 15, 10, 0)
-
-ov = ["-- T3 시점(2027-06-20 10:00, 2027-1 성적 입력 기간)으로 옮기는 오버레이. tools/seed/build_seed.py 로 생성한다.",
-      "-- 기본 시드(R__seed_dev.sql) 위에 한 번만 적용한다. 되돌리려면 기본 시드부터 다시 넣는다.",
-      "-- T0 → T3 사이의 일: 2·1학년 수강신청(02-11·12), 2026 겨울학기 성적 확정(02-15), 현재학기 2027-1로 전환, 2027-1 성적 입력 시작",
-      "SET NAMES utf8mb4;", ""]
-ov.append(insert("enrollment", ["std_no", "lec_no", "enrl_stat", "retake_yn", "proc_type", "enrl_dtm"],
-                 [(e["std"], e["lec"]["no"], "ENROLLED", e["retake"], "STUDENT", e["enrl_dtm"])
-                  for e in sorted(OV_ENR, key=lambda e: (e["lec"]["no"], e["std"]))]))
-for lec in sorted({id(e["lec"]): e["lec"] for e in OV_ENR}.values(), key=lambda l: l["no"]):
-    ov.append(f"UPDATE lecture SET enrl_cnt = {cnt(lec) + extra[id(lec)]} WHERE lec_no = {lec['no']};")
-for std, lec, g in W_FILL:
-    ov.append(f"UPDATE grade SET mid_scr = {g['mid']}, fin_scr = {g['fin']}, hw_scr = {g['hw']}, att_scr = {g['att']}, "
-              f"tot_scr = {g['tot']}, ltr_grd = {q(g['ltr'])} WHERE std_no = {q(std)} AND lec_no = {lec['no']};")
-ov.append(f"UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = {q(ADMIN)}, cnfm_dtm = {q(W_CNFM)} "
-          f"WHERE lec_no IN ({W_ENTERING['no']}, {W_SUBMITTED['no']});")
-ov.append(f"UPDATE semester SET cur_sem_yn = 'N' WHERE sem_no = {CUR};")
-ov.append(f"UPDATE semester SET cur_sem_yn = 'Y' WHERE sem_no = {TARGET};")
-ov.append(insert("grade", ["std_no", "lec_no", "mid_scr", "fin_scr", "hw_scr", "att_scr", "tot_scr", "ltr_grd"],
-                 [(s_, l_["no"], g["mid"], g["fin"], g["hw"], g["att"], g["tot"], g["ltr"]) for s_, l_, g in T3_GRADES]))
-ov.append(f"UPDATE lecture SET grd_stat = 'ENTERING' WHERE lec_no = {T3_ENTERING['no']};")
-ov.append(f"UPDATE lecture SET grd_stat = 'SUBMITTED' WHERE lec_no = {T3_SUBMITTED['no']};")
-OUT_T3.write_text("\n\n".join(ov) + "\n", encoding="utf-8", newline="\n")
-
-# ---------------------------------------------------------------- 사례 찾기(안내·상수용)
 ONLINE, NO_ROOM, CLOSED = tl("1030011"), tl("1030014"), tl("1030016")
 ENG_MAJOR, ENG_GENERAL, REL_EXEMPT = tl("1010015"), tl("1030013"), tl("1020015")
 NO_WEIGHTS = [tl(c) for c in ("1010019", "1020019", "1030009")]
 TWO_SECTIONS = tl("1030007", 2)
 RETAKE_LEC = tl("1010014")
-W_CONFIRMED = find_lec(10, "1030008")
-SOPH = sorted({s_ for s_, l_, _ in CART if l_ is FULL and yr_level(s_, TARGET) == 2}, key=lambda x: (x != "20260001", x))
-ONE_LEFT_CART = sorted({s_ for s_, l_, _ in CART if l_ is ONE_LEFT and not any(
-    e["std"] == s_ and e["lec"] is ONE_LEFT for e in ENR)})
-ONLINE_STD = sorted({e["std"] for e in ENR if e["lec"] is ONLINE and e["stat"] == "ENROLLED"})
-ONLINE_WHEN = "T0"
-if not ONLINE_STD:   # T0에 온라인 강의 수강생이 없으면 T3(2·1학년 신청 후)에서 고른다
-    ONLINE_STD, ONLINE_WHEN = sorted({e["std"] for e in OV_ENR if e["lec"] is ONLINE}), "T3"
-assert ONLINE_STD, "온라인 강의 수강생 없음"
-PROF_LECS = [l for l in LECTURES if l["sem"] == TARGET and l["prof"] == "100001"]
 TA_LEC = find_lec(TARGET, "1020001")
-assert SOPH, "정원 마감 강의를 담은 2학년이 없음"
+DEMO_ROWS = [e for e in ENR if e["lec"] is DEMO_LEC and e["stat"] == "ENROLLED"]
+A_LIMIT = math.floor(len(DEMO_ROWS) * 0.4)
+A_NOW = sum(1 for e in DEMO_ROWS if e["std"] != RICH and e["grade"]["ltr"] in ("A+", "A0", "A-"))
+RACERS = sorted({s_ for s_, l_, _ in CART if l_ is ONE_LEFT and s_ in PLAN})   # T1에 신청하는 2학년
+ONLINE_STD = sorted({e["std"] for e in S3_ENR if e["lec"] is ONLINE})
+assert ONLINE_STD and A_NOW < A_LIMIT, (ONLINE_STD, A_NOW, A_LIMIT)
+assert sem_gpa(RICH, CUR) == 4.0
+
 
 # ---------------------------------------------------------------- 테스트 상수
 def jconst(name, value, doc):
@@ -857,31 +921,39 @@ java = ["package com.crs.backend.support;", "",
         "public final class SeedFixtures {", "", "    private SeedFixtures() {}", "",
         "    /** 모든 계정의 비밀번호. */", '    public static final String PASSWORD = "test1234!";', ""]
 java += jclass("Semester", "학기번호.", [
-    ("Y2026_SECOND", CUR, "2026-2. T0~T2의 현재 학기(성적 확정 완료)"),
+    ("Y2026_SECOND", CUR, "2026-2. T0의 성적 입력 학기, T1까지 현재 학기"),
     ("Y2026_WINTER", 10, "2026 겨울학기"),
-    ("Y2027_FIRST", TARGET, "2027-1. 신청 대상 학기, T3의 현재 학기")])
+    ("Y2027_FIRST", TARGET, "2027-1. 수강신청 학기, s3 이후 현재 학기")])
 java += jclass("Account", "학생이 아닌 계정.", [
     ("ADMIN", ADMIN, "관리자"),
-    ("PROFESSOR", "100001", f"교수. 2027-1 담당 강의 {len(PROF_LECS)}개"),
+    ("DEMO_PROFESSOR", DEMO_PROF, "성적 입력 시연 강의의 교수"),
     ("PROFESSOR_INACTIVE", "100006", "퇴직 교수(INACTIVE). 로그인 차단")])
 java += jclass("Student", "학번.", [
-    ("GRADUATED", "20230001", "졸업생. 2027-1 장바구니·신청·최대학점 없음"),
-    ("ON_LEAVE", "20230003", "휴학생. 2027-1 최대학점 없음"),
-    ("RETURNED", "20250002", "복학생. 휴학 직전 학기 평점 4.3 → 최대학점 21"),
-    ("FRESHMAN", "20270001", "2027 신입생. 이력 없음"),
+    ("DEMO", RICH, "시연 학생. 2026-2 시연 강의 점수만 빈칸, 나머지 A-. A-를 넣으면 평점 4.0 → 2027-1 최대학점 21"),
     ("GPA_EXACTLY_4", "20240001", "2026-2 평점 4.0 → 최대학점 21"),
     ("GPA_JUST_UNDER_4", "20240002", "2026-2 평점 4.0 미만 → 최대학점 18. 신청 취소 이력"),
     ("PASS_FAIL_ONLY", "20250003", "2026-2 P/F 과목만 → 평점 없음 → 최대학점 18"),
-    ("RETAKE", "20240003", "재수강 이력(F → A- 상한). 2027-1 재수강 신청, 컴퓨터네트워크(C+) 재수강 가능"),
-    ("PREREQ_NOT_MET", "20240004", "자료구조 D+ → 데이터베이스(최소 C0) 신청 불가. 장바구니에는 있음"),
+    ("GRADUATING", "20230001", "s1 에서 졸업 처리(정규 8학기, 130학점 이상)"),
+    ("ON_LEAVE", "20230003", "휴학생. 2027-1 최대학점 없음"),
+    ("RETURNING", "20250002", "T0 휴학 → s1 에서 복학. 휴학 직전 학기 평점 4.3 → 최대학점 21"),
+    ("FRESHMAN", "20270001", "2027 신입생. s1 에서 계정 생성"),
+    ("RETAKE", "20240003", "재수강 이력(F → A- 상한). 2027-1 데이터베이스 재수강 신청"),
+    ("PREREQ_NOT_MET", "20240004", "자료구조 D+ → 데이터베이스(최소 C0) 신청 불가(T2)"),
     ("TEACHING_ASSISTANT", "20240005", f"조교. 2027-1 {TA_LEC['no']}번 강의"),
-    ("ADMIN_ADDED", "20250001", "2026-2 관리자 수동 추가 1건"),
-    ("SOPHOMORE_FULL_IN_CART", SOPH[0], "2학년. 정원 마감 강의가 장바구니에 있음(T1)"),
-    ("TIME_CONFLICT", OVERLAP[0], "장바구니 강의가 신청한 강의와 시간이 겹침(T2)"),
-    ("OVER_MAX_CREDIT", OVERMAX[0], f"장바구니 강의를 더하면 최대학점({OVERMAX[3]}) 초과(T2)")])
+    ("ADMIN_ADDED", "20250001", "2026-2 관리자 수동 추가 1건. 3학년이라 T1 에 신청 불가"),
+    ("SOPHOMORE_FULL_IN_CART", "20260001", "정원 마감 강의가 장바구니에 있음(T1)"),
+    ("OVER_MAX_CREDIT", OVERMAX[0], "장바구니 강의를 모두 신청하면 최대학점 초과(T1)"),
+    ("TIME_CONFLICT", OVERLAP[0], "장바구니 강의 두 개의 시간이 겹침(T1)"),
+    ("PREREQ_NOT_MET_SOPHOMORE", PREREQ[0], "장바구니 강의의 선수과목 미이수(T1)")])
 java += jclass("Lecture", "강의번호.", [
-    ("FULL", FULL["no"], "2027-1 정원 마감"),
-    ("ONE_SEAT_LEFT", ONE_LEFT["no"], "2027-1 한 자리 남음"),
+    ("DEMO_GRADE", DEMO_LEC["no"], f"2026-2 성적 입력 시연(입력중, 수강생 {len(DEMO_ROWS)}명, A 한도 {A_LIMIT}명)"),
+    ("NOT_ENTERED", NOTENT["no"], "2026-2 성적 미입력"),
+    ("FULL", FULL["no"], "2027-1 정원 마감(s2 이후)"),
+    ("ONE_SEAT_LEFT", ONE_LEFT["no"], "2027-1 한 자리 남음(s2 이후)"),
+    ("DEMO_EXTRA", RICH_EXTRA["no"], "DEMO 학생이 21학점을 채우려고 더 담은 강의"),
+    ("OVER_MAX_CREDIT_TARGET", OVERMAX[1]["no"], "OVER_MAX_CREDIT 학생이 더 담은 강의"),
+    ("TIME_CONFLICT_TARGET", OVERLAP[1]["no"], "TIME_CONFLICT 학생이 더 담은, 시간이 겹치는 강의"),
+    ("PREREQ_TARGET", PREREQ[1]["no"], "PREREQ_NOT_MET_SOPHOMORE 학생이 담은, 선수과목이 있는 강의"),
     ("ONLINE", ONLINE["no"], "2027-1 온라인(강의실 없음)"),
     ("NO_ROOM", NO_ROOM["no"], "2027-1 대면인데 강의실 미배정"),
     ("CLOSED", CLOSED["no"], "2027-1 폐강"),
@@ -890,113 +962,118 @@ java += jclass("Lecture", "강의번호.", [
     ("ENGLISH_GENERAL", ENG_GENERAL["no"], "교양 영어강의 → 상대평가 대상"),
     ("RELATIVE_EXEMPT", REL_EXEMPT["no"], "상대평가 제외 인정"),
     ("NO_WEIGHTS", NO_WEIGHTS[0]["no"], "반영비율 미입력"),
-    ("TIME_CONFLICT_TARGET", OVERLAP[1]["no"], "TIME_CONFLICT 학생이 담은, 시간이 겹치는 강의"),
-    ("OVER_MAX_CREDIT_TARGET", OVERMAX[1]["no"], "OVER_MAX_CREDIT 학생이 담은 강의"),
     ("RETAKE_TARGET", RETAKE_LEC["no"], "RETAKE 학생이 재수강 신청한 강의"),
-    ("TA_TARGET", TA_LEC["no"], "TEACHING_ASSISTANT 학생이 조교인 강의"),
-    ("WINTER_CONFIRMED", W_CONFIRMED["no"], "2026 겨울 확정"),
-    ("WINTER_SUBMITTED", W_SUBMITTED["no"], "2026 겨울 제출(확정 대기)"),
-    ("WINTER_ENTERING", W_ENTERING["no"], "2026 겨울 입력중(점수 빈 학생 1명)"),
-    ("T3_ENTERING", T3_ENTERING["no"], "T3 오버레이 후 입력중(점수 빈 학생 1명)"),
-    ("T3_SUBMITTED", T3_SUBMITTED["no"], "T3 오버레이 후 제출"),
-    ("T3_RELATIVE", T3_RELATIVE[0]["no"], f"T3 오버레이 후 수강생 {len(t3_rows(T3_RELATIVE[0]))}명, 상대평가 대상")])
+    ("TA_TARGET", TA_LEC["no"], "TEACHING_ASSISTANT 학생이 조교인 강의")])
 java[-1:] = ["}"]
 OUT_FIXTURES.write_text("\n".join(java) + "\n", encoding="utf-8", newline="\n")
 
-# ---------------------------------------------------------------- 모듈별 안내
-def stds(lst):
-    return ", ".join(lst)
 
-
+# ---------------------------------------------------------------- 안내 문서
 def row(*c):
     return "| " + " | ".join(str(x) for x in c) + " |"
 
 
-g = ["# 시드 데이터 안내", "",
-     "개발·테스트·시연 모두 이 데이터를 쓴다. `tools/seed/build_seed.py` 가 만든다(직접 고치지 않는다). 모든 계정의 비밀번호는 `test1234!` 다.", "",
-     "## 시점", "",
-     "앱의 현재 시각을 아래 시점 중 하나로 고정해 띄운다. 기본값은 T0 다. 기능마다 열려 있어야 하는 기간이 다르기 때문이다.", "",
-     row("시점", "시각", "열린 기간", "준비", "주로 쓰는 모듈"), row(*["---"] * 5),
-     row("T0 기준", f"{T0:%Y-%m-%d %H:%M}", "없음", "기본 시드", "A 조회, B 계정·강의 개설, C 강의 운영·성적 확정"),
-     row("T1 신청", f"{T1:%Y-%m-%d %H:%M}", "2학년 수강신청", "기본 시드", "B 수강신청·정원"),
-     row("T2 정정", f"{T2:%Y-%m-%d %H:%M}", "정정(전 학년)", "기본 시드", "B 장바구니·신청 차단 규칙"),
-     row("T3 성적", f"{T3:%Y-%m-%d %H:%M}", "2027-1 성적 입력", "기본 시드 + `t3_grade.sql`", "C 성적 입력·제출"), "",
-     "### 시점 바꾸기", "",
-     "- 로컬: `.env` 의 `CLOCK_FIXED_AT` 을 바꾸고 서버를 다시 시작한다(예: `CLOCK_FIXED_AT=2027-03-04T11:00:00`). 비우면 실제 시각을 쓴다.",
-     "- T3: 서버를 한 번 띄워 기본 시드를 넣은 뒤 오버레이를 적용한다.", "",
-     "  ```bash", "  docker exec -i crs-mysql sh -c 'mysql -uroot -p\"$MYSQL_ROOT_PASSWORD\" crs' < src/main/resources/db/scenario/t3_grade.sql", "  ```", "",
-     "- 처음 상태로 되돌리기: `docker compose down -v && docker compose up -d` 후 서버를 다시 시작한다.",
-     "- 테스트: `@TestPropertySource(properties = \"crs.clock.fixed-at=\" + SeedTime.T2)` 처럼 고르고, 사례는 `SeedFixtures` 상수로 가리킨다. T3 는 `SeedTime.applyT3(dataSource)` 를 테스트 트랜잭션 안에서 부른다.", "",
-     "## 로그인 계정", "",
-     row("역할", "ID", "쓰임"), row(*["---"] * 3),
-     row("관리자", ADMIN, "학기·일정, 강의 개설, 사용자, 신청 현황, 성적 확정"),
-     row("교수", "100001", f"2027-1 담당 강의 {len(PROF_LECS)}개({', '.join(str(l['no']) for l in PROF_LECS)}번)"),
-     row("교수(퇴직)", "100006", "비활성 계정 로그인 차단"),
-     row("학생 겸 조교", "20240005", f"2027-1 {lec_label(TA_LEC)} 조교"),
-     row("학생", "20240001", "평점 4.0, 최대학점 21"),
-     row("학생(2학년)", SOPH[0], "T1에 신청해 볼 학생"), "",
-     "## 모듈 A: 학사 기준·조회", "",
-     row("기능", "시점", "대상", "확인할 것"), row(*["---"] * 4),
-     row("성적 조회(GRD-03)", "T0", "20240001", f"2026-2 평점 {gpa_txt('20240001', CUR)}(전부 A-)"),
-     row("성적 조회", "T0", "20240002", f"2026-2 평점 {gpa_txt('20240002', CUR)}(4.0 바로 아래)"),
-     row("성적 조회", "T0", "20250003", "2026-2 P/F 과목만 → 평점 없음"),
-     row("성적 조회", "T0", "20240003", "이산수학 F → 재수강 A-(총점 98이어도 상한)"),
-     row("성적 조회", "T0", "20230003", "휴학 중 2026 겨울 수강. 계절 성적은 정규학기 평점에서 빠지고 이수 내역에는 들어감"),
-     row("최대학점 산정", "T0", "20240001 / 20240002", "21 / 18 (4.0 경계)"),
-     row("최대학점 산정", "T0", "20250002", "복학생: 휴학 직전 2025-2 평점 기준 21"),
-     row("최대학점 산정", "T0", "20250003", "직전 학기 평점 없음 → 18"),
-     row("최대학점 산정", "T0", "20230001 / 20230003", "졸업생·휴학생은 2027-1 정규학기 최대학점 없음"),
-     row("강의 검색(REG-01)", "T0", lec_label(FULL), "잔여 0"),
-     row("강의 검색", "T0", lec_label(ONE_LEFT), "잔여 1"),
-     row("강의 검색", "T0", f"{lec_label(tl('1030007'))}, {TWO_SECTIONS['no']}번", "같은 과목 2분반"),
-     row("강의 검색", "T0", lec_label(CLOSED), "폐강"),
-     row("시간표(REG-04)", ONLINE_WHEN, stds(ONLINE_STD[:2]), f"온라인 강의 {lec_label(ONLINE)} 포함(강의실 없음)"),
-     row("학기·일정(ACA-01)", "T0", "2027-1 일정", "4·3학년 신청일은 시작됨(삭제 불가), 정정·성적 입력은 시작 전(삭제 가능)"),
-     row("대시보드(ACA-04)", "T0", "2027-1", f"개설 강의 {sum(1 for l in LECTURES if l['sem'] == TARGET and l['stat'] == 'OPEN')}개, 폐강 1개, 정원 마감 1개"),
-     row("품질 검사", "T0", lec_label(NO_ROOM), "신청이 시작됐는데 대면 강의에 강의실 미배정"), "",
-     "## 모듈 B: 계정·수강신청", "",
-     row("기능", "시점", "대상", "확인할 것"), row(*["---"] * 4),
-     row("로그인(USR-01)", "아무 때", "9001 / 100001 / 20240001", "역할별 로그인"),
-     row("로그인", "아무 때", "100006", "비활성 계정 차단"),
-     row("강의 개설(ACA-03)", "T0", lec_label(NO_ROOM), "강의실 미배정 대면 강의. 강의실·시간 배정"),
-     row("강의 개설", "T0", lec_label(CLOSED), "폐강 강의"),
-     row("수강신청(REG-03)", "T1", f"{SOPH[0]} → {FULL['no']}번", "정원 마감으로 차단"),
-     row("수강신청", "T1", f"{stds(ONE_LEFT_CART) or '-'} → {ONE_LEFT['no']}번", "남은 한 자리(동시 신청 실험)"),
-     row("수강신청", "T1", "20250001(3학년)", "자기 학년 신청일이 아님 → 차단"),
-     row("수강신청", "T2", f"{OVERLAP[0]} → {OVERLAP[1]['no']}번", f"이미 신청한 {OVERLAP[2]['no']}번과 시간 겹침 → 차단"),
-     row("수강신청", "T2", f"{OVERMAX[0]} → {OVERMAX[1]['no']}번", f"신청 {OVERMAX[2]:g}학점 + {COURSES[OVERMAX[1]['cd']]['crdt']:g}학점 > 최대 {OVERMAX[3]} → 차단"),
-     row("수강신청", "T2", f"20240004 → {RETAKE_LEC['no']}번", "선수과목(자료구조 C0 이상) 미이수 → 차단"),
-     row("수강신청", "T2", f"20240003 → {ENG_MAJOR['no']}번", "컴퓨터네트워크 C+ → 재수강으로 신청(retake_yn Y)"),
-     row("수강신청", "T2", "20230001 / 20230003", "졸업생·휴학생 → 차단"),
-     row("수강신청", "T2", "아무 학생", "장바구니에 없는 강의 → 차단"),
-     row("장바구니(REG-02)", "T0 / T2", "아무 학생", "T0은 기간 밖이라 담기 차단, T2는 담기·삭제 가능"),
-     row("신청 현황(REG-05)", "T2", "관리자 9001", "장바구니 확인 없이 수동 추가. 2026-2 수동 추가 이력은 20250001"), "",
-     "## 모듈 C: 강의 운영·성적", "",
-     row("기능", "시점", "대상", "확인할 것"), row(*["---"] * 4),
-     row("과목(ACA-02)", "T0", "선수과목 6건", "최소취득등급 기본값 D-, 채플 0.5학점 P/F"),
-     row("담당 강의(LEC-01)", "T0", "교수 100001", f"2027-1 {len(PROF_LECS)}개"),
-     row("강의계획서·반영비율(LEC-03)", "T0", ", ".join(f"{l['no']}번" for l in NO_WEIGHTS), "반영비율 미입력"),
-     row("조교(LEC-04)", "T0", f"20240005 / {TA_LEC['no']}번", "조교 지정·삭제, 조교 로그인 권한"),
-     row("성적 확정(GRD-02)", "T0", lec_label(W_SUBMITTED), "제출 → 관리자 확정"),
-     row("성적 확정", "T0", lec_label(W_ENTERING), "점수 빈 학생 1명 → 미입력 강의로 보임"),
-     row("성적 확정", "T0", lec_label(W_CONFIRMED), "확정 후 교수 수정 불가"),
-     row("성적 입력(GRD-01)", "T3", lec_label(T3_ENTERING), "입력중, 점수 빈 학생 1명"),
-     row("성적 입력", "T3", lec_label(T3_SUBMITTED), "제출 → 수정하면 입력중으로"),
-     row("성적 입력", "T3", lec_label(T3_RELATIVE[0]), f"수강생 {len(t3_rows(T3_RELATIVE[0]))}명 → 상대평가(A 40%, A+B 80%)"),
-     row("성적 입력", "T3", lec_label(ENG_MAJOR), "전공 영어강의 → 상대평가 제외"),
-     row("성적 입력", "T3", lec_label(REL_EXEMPT), "상대평가 제외 인정"),
-     row("성적 입력", "T3", lec_label(RETAKE_LEC), "20240003 재수강 → A- 상한"), "",
-     "## 학생", "",
-     row("학번", "이름", "학과", "학년", "학적상태", "2027-1 최대학점"), row(*["---"] * 6)]
-g += [row(s_, v["nm"], dict(DEPTS)[v["dept"]], FINAL[s_][0], FINAL[s_][1], MAXC.get((s_, TARGET), "-")) for s_, v in ST.items()]
-g += ["", "## 학사일정 (2027-1)", "", row("유형", "대상학년", "시작", "종료"), row(*["---"] * 4)]
-g += [row(t, lv or "전체", f"{a:%Y-%m-%d %H:%M}", f"{b:%Y-%m-%d %H:%M}") for t, lv, a, b in SCHED[TARGET]]
-g += ["", "## 건수", "", row("테이블", "기본 시드", "T3 오버레이 추가"), row(*["---"] * 3),
-      row("lecture", len(LECTURES), "-"), row("enrollment", len(ENR), len(OV_ENR)),
-      row("grade", sum(1 for e in ENR if e["grade"] and e["stat"] == "ENROLLED"), len(T3_GRADES)),
-      row("course_cart", len({(s_, l_['no']) for s_, l_, _ in CART}), "-"),
-      row("semester_maximum_credit", len(MAXC), "-")]
-OUT_GUIDE.write_text("\n".join(g) + "\n", encoding="utf-8", newline="\n")
-print(f"lectures {len(LECTURES)}, enrollments {len(ENR)} (+T3 {len(OV_ENR)}), graduated {sorted(GRADUATED)}")
-print(f"T2 overlap {OVERLAP[0]}->{OVERLAP[1]['no']}, overmax {OVERMAX[0]}->{OVERMAX[1]['no']} ({OVERMAX[2]}+ > {OVERMAX[3]})")
-print(f"T3 entering {T3_ENTERING['no']}, submitted {T3_SUBMITTED['no']}, relative {T3_RELATIVE[0]['no']} ({len(t3_rows(T3_RELATIVE[0]))})")
+crd = lambda l: f"{COURSES[l['cd']]['crdt']:g}"
+plan_cr = lambda s_: f"{credit_excl_chapel(PLAN[s_]):g}"
+gd = ["# 시드 데이터 안내", "",
+      "개발·테스트·시연 모두 이 데이터를 쓴다. `tools/seed/build_seed.py` 가 만든다(직접 고치지 않는다). 모든 계정의 비밀번호는 `test1234!` 다.", "",
+      "## 시연 흐름", "",
+      "2026-2 성적을 입력·확정하면 그 성적으로 2027-1 최대학점이 정해지고, 그 학점으로 수강신청이 막히거나 허용된다.", "",
+      row("순서", "시각", "누가", "무엇을", "데이터"), row(*["---"] * 5),
+      row("① 성적 입력", f"T0 {T0:%Y-%m-%d %H:%M}", f"교수 {DEMO_PROF}", f"{lec_label(DEMO_LEC)}에서 {RICH} 점수 입력(90~93점 → A-) 후 제출", f"A {A_NOW}명 + 1 = 한도 {A_LIMIT}명. A를 더 주면 제출 불가"),
+      row("② 성적 확정", "T0", f"관리자 {ADMIN}", f"미입력 강의 {lec_label(NOTENT)} 확인, 2026-2 확정", "기본 시드"),
+      row("③ 학기 마감", "(T0 → T1)", f"관리자 {ADMIN}", "진급·졸업·복학, 2027-1 최대학점 산정", "앱 기능. 없으면 `s1_grade_close`"),
+      row("④ 시계 넘김", f"T1 {T1:%Y-%m-%d %H:%M}", "시연 API", "다른 학생들의 장바구니와 4·3학년 신청을 채움", "`s2_enroll_day`"),
+      row("⑤ 수강신청", "T1", f"학생 {RICH}", f"장바구니 {plan_cr(RICH)}학점 + {RICH_EXTRA['no']}번 {crd(RICH_EXTRA)}학점 = 21학점 신청 성공. {FULL['no']}번은 정원 마감으로 차단", "s2 이후"),
+      row("⑥ 차단 사례", "T1", "학생 여럿", "아래 모듈 B 표의 T1 사례", "s2 이후"),
+      row("⑦ 데이터 제어", "T1", "root·app·readonly", "`demo/` SQL", "s2 이후"), "",
+      "①에서 89점 이하(B+)를 넣으면 평점이 4.0 아래가 되어 ③의 최대학점이 18이 되고, ⑤에서 21학점 신청이 막힌다. `s1_grade_close` 는 최대학점을 미리 계산해 둔 값(21)으로 넣으므로 이 대비를 보이려면 ③을 앱 기능으로 해야 한다.", "",
+      "## 시점과 오버레이", "",
+      row("시점", "시각", "열린 기간", "적용할 오버레이"), row(*["---"] * 4),
+      row("T0", f"{T0:%Y-%m-%d %H:%M}", "2026-2 성적 입력, 2026 겨울 정정", "없음(기본 시드)"),
+      row("T1", f"{T1:%Y-%m-%d %H:%M}", "2027-1 2학년 수강신청", "`s1_grade_close`, `s2_enroll_day`"),
+      row("T2", f"{T2:%Y-%m-%d %H:%M}", "2027-1 정정(전 학년)", "`s1_grade_close`, `s2_enroll_day`, `s3_adjust`"), "",
+      "오버레이는 `src/main/resources/db/scenario/` 에 있고, 앞 단계부터 순서대로 한 번씩 적용한다. 되돌리려면 `docker compose down -v` 후 다시 올린다.", "",
+      "### 시점 바꾸기", "",
+      "- **시연·로컬(권장)**: 시연 API 로 오버레이를 넣고 시계를 옮긴다. 프로필을 지정하지 않으면 demo 라 바로 쓸 수 있다. 같은 오버레이를 두 번 넣으면 409 로 거절하고 데이터는 그대로다.", "",
+      "  ```bash",
+      "  curl -X POST localhost:8080/api/dev/scenarios/s1_grade_close",
+      "  curl -X POST localhost:8080/api/dev/scenarios/s2_enroll_day",
+      f"  curl -X PUT 'localhost:8080/api/dev/clock?at={T1:%Y-%m-%dT%H:%M:%S}'",
+      "  curl localhost:8080/api/dev/clock", "  ```", "",
+      "- **서버 시작 시각**: `.env` 의 `CLOCK_FIXED_AT` (기본 T0). 비우면 실제 시각.",
+      "- **테스트**: `@TestPropertySource(properties = \"crs.clock.fixed-at=\" + SeedTime.T1)` 로 시각을 고르고, `SeedTime.atT1(dataSource)` 로 오버레이를 테스트 트랜잭션 안에서 적용한다. 사례는 `SeedFixtures` 상수로 가리킨다.", "",
+      "## 로그인 계정", "",
+      row("역할", "ID", "쓰임"), row(*["---"] * 3),
+      row("관리자", ADMIN, "학기·일정, 강의 개설, 사용자, 신청 현황, 성적 확정"),
+      row("교수", DEMO_PROF, f"성적 입력 시연 {lec_label(DEMO_LEC)}"),
+      row("교수(퇴직)", "100006", "비활성 계정 로그인 차단"),
+      row("학생", RICH, "시연 학생(성적 입력 → 21학점 신청)"),
+      row("학생 겸 조교", "20240005", f"2027-1 {lec_label(TA_LEC)} 조교"), "",
+      "## 모듈 A: 학사 기준·조회", "",
+      row("기능", "시점", "대상", "확인할 것"), row(*["---"] * 4),
+      row("성적 조회(GRD-03)", "T0", "20240001", "2026-2 성적은 제출됐지만 확정 전 → 학생 화면 표시 여부"),
+      row("성적 조회", "T1", "20240001 / 20240002", f"2026-2 평점 {gpa_txt('20240001', CUR)} / {gpa_txt('20240002', CUR)}"),
+      row("성적 조회", "T1", "20250003", "2026-2 P/F 과목만 → 평점 없음"),
+      row("성적 조회", "T1", "20240003", "이산수학 F → 재수강 A-(총점 98이어도 상한)"),
+      row("성적 조회", "T1", "20230003", "휴학 중 2026 겨울 수강. 계절 성적은 정규학기 평점에서 빠지고 이수 내역에는 들어감"),
+      row("학기 마감(진급·졸업·복학)", "T0 → s1", "20230001 / 20250002 / 2026 입학생", "졸업 / 복학 / 1→2학년"),
+      row("최대학점 산정", "T0 → s1", f"{RICH} / 20240001 / 20240002", "21 / 21 / 18 (4.0 경계)"),
+      row("최대학점 산정", "T0 → s1", "20250002", "복학생: 휴학 직전 2025-2 평점 기준 21"),
+      row("최대학점 산정", "T0 → s1", "20250003", "직전 학기 평점 없음 → 18"),
+      row("최대학점 산정", "T0 → s1", "20230001 / 20230003", "졸업생·휴학생은 2027-1 정규학기 최대학점 없음"),
+      row("강의 검색(REG-01)", "T1", lec_label(FULL), "잔여 0"),
+      row("강의 검색", "T1", lec_label(ONE_LEFT), "잔여 1"),
+      row("강의 검색", "T1", f"{lec_label(tl('1030007'))}, {TWO_SECTIONS['no']}번", "같은 과목 2분반"),
+      row("강의 검색", "T1", lec_label(CLOSED), "폐강"),
+      row("시간표(REG-04)", "T2", ", ".join(ONLINE_STD[:2]), f"온라인 강의 {lec_label(ONLINE)} 포함(강의실 없음)"),
+      row("학기·일정(ACA-01)", "T0", "2027-1 일정", "모두 시작 전 → 삭제 가능. T1에는 장바구니·4·3학년 신청일이 시작돼 삭제 불가"),
+      row("대시보드(ACA-04)", "T1", "2027-1", f"개설 강의 {sum(1 for l in LECTURES if l['sem'] == TARGET and l['stat'] == 'OPEN')}개, 폐강 1개, 정원 마감 1개"),
+      row("품질 검사", "T1", lec_label(NO_ROOM), "신청이 시작됐는데 대면 강의에 강의실 미배정"), "",
+      "## 모듈 B: 계정·수강신청", "",
+      row("기능", "시점", "대상", "확인할 것"), row(*["---"] * 4),
+      row("로그인(USR-01)", "아무 때", f"{ADMIN} / {DEMO_PROF} / {RICH}", "역할별 로그인"),
+      row("로그인", "아무 때", "100006", "비활성 계정 차단"),
+      row("계정 관리(USR-02)", "T0", "20250002", "휴학 → 복학 처리"),
+      row("강의 개설(ACA-03)", "T0", lec_label(NO_ROOM), "강의실 미배정 대면 강의. 강의실·시간 배정"),
+      row("강의 개설", "T0", lec_label(CLOSED), "폐강 강의"),
+      row("수강신청(REG-03)", "T1", f"{RICH} → 장바구니 전체", f"{plan_cr(RICH)} + {crd(RICH_EXTRA)} = 21학점, 최대 21 → 성공(단 {FULL['no']}번은 정원 마감)"),
+      row("수강신청", "T1", f"{', '.join(RACERS)} → {ONE_LEFT['no']}번", "남은 한 자리(동시 신청 실험)"),
+      row("수강신청", "T1", f"{OVERMAX[0]} → 장바구니 전체", f"{OVERMAX[2]:g} + {crd(OVERMAX[1])}학점 > 최대 {MAXC[(OVERMAX[0], TARGET)]} → {OVERMAX[1]['no']}번 차단"),
+      row("수강신청", "T1", f"{OVERLAP[0]} → {OVERLAP[1]['no']}번", f"장바구니의 {OVERLAP[2]['no']}번과 시간 겹침 → 둘 중 나중 것 차단"),
+      row("수강신청", "T1", f"{PREREQ[0]} → {PREREQ[1]['no']}번", "선수과목 미이수 → 차단"),
+      row("수강신청", "T1", "20250001(3학년)", "자기 학년 신청일이 아님 → 차단"),
+      row("수강신청", "T1", "20230001", "졸업생 → 차단"),
+      row("수강신청", "T2", f"20240004 → {RETAKE_LEC['no']}번", "선수과목(자료구조 C0 이상) 미이수 → 차단"),
+      row("수강신청", "T2", f"20240003 → {ENG_MAJOR['no']}번", "컴퓨터네트워크 C+ → 재수강으로 신청(retake_yn Y)"),
+      row("수강신청", "T2", "20230003", "휴학생 → 차단"),
+      row("장바구니(REG-02)", "T0 / T1", "아무 학생", "T0은 기간 밖이라 담기 차단, T1은 담기·삭제 가능"),
+      row("신청 현황(REG-05)", "T1", f"관리자 {ADMIN}", "장바구니 확인 없이 수동 추가. 2026-2 수동 추가 이력은 20250001"), "",
+      "## 모듈 C: 강의 운영·성적", "",
+      row("기능", "시점", "대상", "확인할 것"), row(*["---"] * 4),
+      row("성적 입력(GRD-01)", "T0", lec_label(DEMO_LEC), f"입력중, {RICH} 빈칸. 수강생 {len(DEMO_ROWS)}명 → 상대평가(A {A_LIMIT}명, A+B {math.floor(len(DEMO_ROWS) * 0.8)}명 한도)"),
+      row("성적 입력", "T0", lec_label(DEMO_LEC), f"현재 A {A_NOW}명. A 두 명을 더 주면 제출 불가"),
+      row("성적 입력", "T0", "2026-2 나머지 강의", "제출 상태. 수정하면 입력중으로"),
+      row("성적 확정(GRD-02)", "T0", lec_label(NOTENT), "미입력 강의로 보임"),
+      row("성적 확정", "T0", "2026-2 제출 강의", "관리자 확정 → 이후 교수 수정 불가"),
+      row("과목(ACA-02)", "T0", "선수과목 6건", "최소취득등급 기본값 D-, 채플 0.5학점 P/F"),
+      row("담당 강의(LEC-01)", "T0", f"교수 {DEMO_PROF}", "2026-2·2027-1 담당 강의"),
+      row("강의계획서·반영비율(LEC-03)", "T0", ", ".join(f"{l['no']}번" for l in NO_WEIGHTS), "2027-1 반영비율 미입력"),
+      row("조교(LEC-04)", "T0", f"20240005 / {TA_LEC['no']}번", "조교 지정·삭제, 조교 로그인 권한"), "",
+      "## 학생", "",
+      row("학번", "이름", "학과", "T0 학년·학적", "s1 이후 학년·학적", "2027-1 최대학점"), row(*["---"] * 6)]
+gd += [row(s_, v["nm"], dict(DEPTS)[v["dept"]],
+           "-" if s_ in NEW_STUDENTS else "{} {}".format(*yr_stat_t0(s_)), "{} {}".format(*FINAL[s_]),
+           MAXC.get((s_, TARGET), "-")) for s_, v in ST.items()]
+gd += ["", "## 학사일정 (2027-1)", "", row("유형", "대상학년", "시작", "종료"), row(*["---"] * 4)]
+gd += [row(t, lv or "전체", f"{a:%Y-%m-%d %H:%M}", f"{b:%Y-%m-%d %H:%M}") for t, lv, a, b in SCHED[TARGET]]
+gd += ["", "## 건수", "", row("테이블", "기본 시드", "s1", "s2", "s3"), row(*["---"] * 5),
+       row("enrollment", len(BASE_ENR), "-", len(S2_ENR), len(S3_ENR)),
+       row("grade", len(base_grades), sum(1 for e in ENR if e["lec"] is NOTENT and e["stat"] == "ENROLLED"),
+           sum(1 for e in ENR if e["lec"]["sem"] == 10 and e["stat"] == "ENROLLED"), "-"),
+       row("course_cart", "-", "-", len({(s_, l_['no']) for s_, l_, _ in CART}), "-"),
+       row("semester_maximum_credit", sum(1 for (s_, sem) in MAXC if sem <= 10), sum(1 for (s_, sem) in MAXC if sem == TARGET), "-", "-")]
+OUT_GUIDE.write_text("\n".join(gd) + "\n", encoding="utf-8", newline="\n")
+print(f"lectures {len(LECTURES)}, base enrollments {len(BASE_ENR)}, s2 {len(S2_ENR)}, s3 {len(S3_ENR)}")
+print(f"demo lecture {DEMO_LEC['no']} prof {DEMO_PROF} rows {len(DEMO_ROWS)} A {A_NOW}/{A_LIMIT}, not entered {NOTENT['no']}")
+print(f"T1 rich+{RICH_EXTRA['no']}, overmax {OVERMAX[0]}->{OVERMAX[1]['no']}, overlap {OVERLAP[0]}->{OVERLAP[1]['no']}, prereq {PREREQ[0]}->{PREREQ[1]['no']}, racers {RACERS}")

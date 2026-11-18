@@ -11,13 +11,19 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.datasource.init.ScriptUtils;
 
 /**
  * 시연용 SQL(demo/*.sql)이 적힌 대로 동작하는지 확인합니다. 파일 첫 줄의 "-- 계정: X" 로 접속하고, 문장마다 위의
  * "-- 기대: 성공" 또는 "-- 기대: 거부 오류문구" 와 결과를 비교합니다. 실행한 변경은 모두 롤백합니다.
  */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class DemoScriptTest extends IntegrationTest {
 
     @ParameterizedTest
@@ -42,6 +48,28 @@ class DemoScriptTest extends IntegrationTest {
             }
         }
         assertThat(failures).isEmpty();
+    }
+
+    /**
+     * 시연 SQL 은 T1 상태 기준이다. 권한을 볼 계정(app, readonly)은 오버레이를 넣을 수 없어서 root 로 T1 을 커밋해 두고, 끝나면
+     * 기본 시드를 다시 넣어 다른 테스트가 T0 상태를 보게 한다.
+     */
+    @BeforeAll
+    void moveToT1() throws SQLException {
+        runAsRoot(SeedTime.S1, SeedTime.S2);
+    }
+
+    @AfterAll
+    void restoreT0() throws SQLException {
+        runAsRoot("../seed/R__seed_dev");
+    }
+
+    private static void runAsRoot(String... scenarios) throws SQLException {
+        try (Connection root = dataSourceAs("root").getConnection()) {
+            for (String scenario : scenarios) {
+                ScriptUtils.executeSqlScript(root, new ClassPathResource("db/scenario/" + scenario + ".sql"));
+            }
+        }
     }
 
     private static String account(String file) throws IOException {

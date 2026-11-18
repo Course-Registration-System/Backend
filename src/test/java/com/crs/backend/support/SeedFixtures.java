@@ -17,13 +17,13 @@ public final class SeedFixtures {
 
         private Semester() {}
 
-        /** 2026-2. T0~T2의 현재 학기(성적 확정 완료) */
+        /** 2026-2. T0의 성적 입력 학기, T1까지 현재 학기 */
         public static final int Y2026_SECOND = 9;
 
         /** 2026 겨울학기 */
         public static final int Y2026_WINTER = 10;
 
-        /** 2027-1. 신청 대상 학기, T3의 현재 학기 */
+        /** 2027-1. 수강신청 학기, s3 이후 현재 학기 */
         public static final int Y2027_FIRST = 11;
     }
 
@@ -35,8 +35,8 @@ public final class SeedFixtures {
         /** 관리자 */
         public static final String ADMIN = "9001";
 
-        /** 교수. 2027-1 담당 강의 8개 */
-        public static final String PROFESSOR = "100001";
+        /** 성적 입력 시연 강의의 교수 */
+        public static final String DEMO_PROFESSOR = "100002";
 
         /** 퇴직 교수(INACTIVE). 로그인 차단 */
         public static final String PROFESSOR_INACTIVE = "100006";
@@ -47,17 +47,8 @@ public final class SeedFixtures {
 
         private Student() {}
 
-        /** 졸업생. 2027-1 장바구니·신청·최대학점 없음 */
-        public static final String GRADUATED = "20230001";
-
-        /** 휴학생. 2027-1 최대학점 없음 */
-        public static final String ON_LEAVE = "20230003";
-
-        /** 복학생. 휴학 직전 학기 평점 4.3 → 최대학점 21 */
-        public static final String RETURNED = "20250002";
-
-        /** 2027 신입생. 이력 없음 */
-        public static final String FRESHMAN = "20270001";
+        /** 시연 학생. 2026-2 시연 강의 점수만 빈칸, 나머지 A-. A-를 넣으면 평점 4.0 → 2027-1 최대학점 21 */
+        public static final String DEMO = "20260001";
 
         /** 2026-2 평점 4.0 → 최대학점 21 */
         public static final String GPA_EXACTLY_4 = "20240001";
@@ -68,26 +59,41 @@ public final class SeedFixtures {
         /** 2026-2 P/F 과목만 → 평점 없음 → 최대학점 18 */
         public static final String PASS_FAIL_ONLY = "20250003";
 
-        /** 재수강 이력(F → A- 상한). 2027-1 재수강 신청, 컴퓨터네트워크(C+) 재수강 가능 */
+        /** s1 에서 졸업 처리(정규 8학기, 130학점 이상) */
+        public static final String GRADUATING = "20230001";
+
+        /** 휴학생. 2027-1 최대학점 없음 */
+        public static final String ON_LEAVE = "20230003";
+
+        /** T0 휴학 → s1 에서 복학. 휴학 직전 학기 평점 4.3 → 최대학점 21 */
+        public static final String RETURNING = "20250002";
+
+        /** 2027 신입생. s1 에서 계정 생성 */
+        public static final String FRESHMAN = "20270001";
+
+        /** 재수강 이력(F → A- 상한). 2027-1 데이터베이스 재수강 신청 */
         public static final String RETAKE = "20240003";
 
-        /** 자료구조 D+ → 데이터베이스(최소 C0) 신청 불가. 장바구니에는 있음 */
+        /** 자료구조 D+ → 데이터베이스(최소 C0) 신청 불가(T2) */
         public static final String PREREQ_NOT_MET = "20240004";
 
         /** 조교. 2027-1 199번 강의 */
         public static final String TEACHING_ASSISTANT = "20240005";
 
-        /** 2026-2 관리자 수동 추가 1건 */
+        /** 2026-2 관리자 수동 추가 1건. 3학년이라 T1 에 신청 불가 */
         public static final String ADMIN_ADDED = "20250001";
 
-        /** 2학년. 정원 마감 강의가 장바구니에 있음(T1) */
+        /** 정원 마감 강의가 장바구니에 있음(T1) */
         public static final String SOPHOMORE_FULL_IN_CART = "20260001";
 
-        /** 장바구니 강의가 신청한 강의와 시간이 겹침(T2) */
-        public static final String TIME_CONFLICT = "20230002";
+        /** 장바구니 강의를 모두 신청하면 최대학점 초과(T1) */
+        public static final String OVER_MAX_CREDIT = "20260002";
 
-        /** 장바구니 강의를 더하면 최대학점(18) 초과(T2) */
-        public static final String OVER_MAX_CREDIT = "20250001";
+        /** 장바구니 강의 두 개의 시간이 겹침(T1) */
+        public static final String TIME_CONFLICT = "20250002";
+
+        /** 장바구니 강의의 선수과목 미이수(T1) */
+        public static final String PREREQ_NOT_MET_SOPHOMORE = "20260003";
     }
 
     /** 강의번호. */
@@ -95,11 +101,29 @@ public final class SeedFixtures {
 
         private Lecture() {}
 
-        /** 2027-1 정원 마감 */
+        /** 2026-2 성적 입력 시연(입력중, 수강생 12명, A 한도 4명) */
+        public static final int DEMO_GRADE = 183;
+
+        /** 2026-2 성적 미입력 */
+        public static final int NOT_ENTERED = 157;
+
+        /** 2027-1 정원 마감(s2 이후) */
         public static final int FULL = 191;
 
-        /** 2027-1 한 자리 남음 */
+        /** 2027-1 한 자리 남음(s2 이후) */
         public static final int ONE_SEAT_LEFT = 198;
+
+        /** DEMO 학생이 21학점을 채우려고 더 담은 강의 */
+        public static final int DEMO_EXTRA = 197;
+
+        /** OVER_MAX_CREDIT 학생이 더 담은 강의 */
+        public static final int OVER_MAX_CREDIT_TARGET = 189;
+
+        /** TIME_CONFLICT 학생이 더 담은, 시간이 겹치는 강의 */
+        public static final int TIME_CONFLICT_TARGET = 209;
+
+        /** PREREQ_NOT_MET_SOPHOMORE 학생이 담은, 선수과목이 있는 강의 */
+        public static final int PREREQ_TARGET = 193;
 
         /** 2027-1 온라인(강의실 없음) */
         public static final int ONLINE = 222;
@@ -125,34 +149,10 @@ public final class SeedFixtures {
         /** 반영비율 미입력 */
         public static final int NO_WEIGHTS = 196;
 
-        /** TIME_CONFLICT 학생이 담은, 시간이 겹치는 강의 */
-        public static final int TIME_CONFLICT_TARGET = 188;
-
-        /** OVER_MAX_CREDIT 학생이 담은 강의 */
-        public static final int OVER_MAX_CREDIT_TARGET = 204;
-
         /** RETAKE 학생이 재수강 신청한 강의 */
         public static final int RETAKE_TARGET = 194;
 
         /** TEACHING_ASSISTANT 학생이 조교인 강의 */
         public static final int TA_TARGET = 199;
-
-        /** 2026 겨울 확정 */
-        public static final int WINTER_CONFIRMED = 185;
-
-        /** 2026 겨울 제출(확정 대기) */
-        public static final int WINTER_SUBMITTED = 186;
-
-        /** 2026 겨울 입력중(점수 빈 학생 1명) */
-        public static final int WINTER_ENTERING = 184;
-
-        /** T3 오버레이 후 입력중(점수 빈 학생 1명) */
-        public static final int T3_ENTERING = 192;
-
-        /** T3 오버레이 후 제출 */
-        public static final int T3_SUBMITTED = 201;
-
-        /** T3 오버레이 후 수강생 13명, 상대평가 대상 */
-        public static final int T3_RELATIVE = 229;
     }
 }

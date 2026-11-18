@@ -1,6 +1,9 @@
 spring:
   application:
     name: backend
+  # 프로필을 지정하지 않으면 demo: 시연 API(/api/dev/*)가 켜진다. 운영은 SPRING_PROFILES_ACTIVE 로 다른 프로필을 준다.
+  profiles:
+    default: demo
   # 프로젝트 루트의 .env 를 설정값으로 읽습니다. 없으면 건너뜁니다(환경 변수로 넘겨도 됩니다).
   config:
     import: optional:file:.env[.properties]
@@ -21,5 +24,5 @@ server:
 
 crs:
   clock:
-    # 앱의 현재 시각. 기본값은 시드 기준 시각(T0). 비우면 실제 시각을 씁니다. 시점 목록은 docs/seed-data.md
-    fixed-at: ${CLOCK_FIXED_AT:2027-02-10T18:00:00}
+    # 서버 시작 시 앱의 현재 시각. 기본값은 시드 기준 시각 T0. 비우면 실제 시각을 씁니다. 시점 목록은 docs/seed-data.md
+    fixed-at: ${CLOCK_FIXED_AT:2026-12-21T10:00:00}

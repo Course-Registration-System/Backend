@@ -1,7 +1,8 @@
 -- 시드 정합성 검사. DB 제약으로 막지 못하는 업무 규칙을 SQL로 센다.
 -- 각 검사는 'CHECK 이름 | 기대값' 주석 줄 다음의 SELECT 하나이고, 위반 건수(숫자 하나)를 돌려준다.
--- run_seed_check.py가 순서대로 실행해 기대값과 비교한다. 대량 데이터·품질 검사(E-3)에서도 그대로 쓴다.
--- @now(스냅숏 시각)는 실행기가 먼저 정한다.
+-- 기대값이 시점마다 다르면 'T0:0, T1:1' 처럼 적는다. 적지 않은 시점에서는 그 검사를 건너뛴다.
+-- SeedDataTest 가 시점(T0·T1·T2)마다 실행해 기대값과 비교한다. 대량 데이터·품질 검사에서도 그대로 쓴다.
+-- @now(그 시점의 시각)는 실행기가 먼저 정한다.
 
 -- CHECK 신청인원 카운터 = 신청 건수 | 0
 SELECT COUNT(*) FROM lecture l
@@ -120,7 +121,7 @@ WHERE (u.role = 'STUDENT') <> (s.std_no IS NOT NULL)
 -- CHECK 현재 학기는 하나 | 0
 SELECT ABS(COUNT(*) - 1) FROM semester WHERE cur_sem_yn = 'Y';
 
--- CHECK 신청 대상 학기가 2027-1 | 0
+-- CHECK 신청 대상 학기가 2027-1 | T1:0, T2:0
 WITH ord AS (SELECT sem_no, yr, sem_type, yr * 10 + FIELD(sem_type, 'FIRST', 'SUMMER', 'SECOND', 'WINTER') AS o FROM semester)
 SELECT COUNT(*) FROM (
   SELECT ord.yr, ord.sem_type FROM ord JOIN academic_schedule a USING (sem_no)
@@ -172,7 +173,7 @@ SELECT
 + (SELECT COUNT(*) FROM teaching_assistant_assignment t JOIN lecture l USING (lec_no) JOIN student s ON s.std_no = t.std_no
     WHERE s.std_stat = 'GRADUATED' AND l.sem_no = (SELECT sem_no FROM semester WHERE yr = 2027 AND sem_type = 'FIRST'));
 
--- CHECK 2027-1 최대학점 재계산과 다름(직전 다닌 정규학기 평점 4.0 이상이면 21) | 0
+-- CHECK 2027-1 최대학점 재계산과 다름(직전 다닌 정규학기 평점 4.0 이상이면 21) | T1:0, T2:0
 WITH ord AS (SELECT sem_no, sem_type, yr * 10 + FIELD(sem_type, 'FIRST', 'SUMMER', 'SECOND', 'WINTER') AS o FROM semester),
 tgt AS (SELECT sem_no, o FROM ord WHERE o = 20271),
 gpa AS (
@@ -211,7 +212,15 @@ FROM (
     AND e.enrl_stat = 'ENROLLED'
   GROUP BY e.std_no) x;
 
--- CHECK 신청이 시작된 신청 대상 학기에 강의실 미배정 대면 수업(의도한 사례 1건) | 1
+-- CHECK 시연 학생 20260001의 2026-2 평점이 정확히 4.0(s1 이후) | T1:0, T2:0
+SELECT COUNT(*) FROM (
+  SELECT SUM(c.crdt * CASE g.ltr_grd WHEN 'A+' THEN 4.5 WHEN 'A0' THEN 4.3 WHEN 'A-' THEN 4.0 ELSE 0 END) / SUM(c.crdt) AS gpa
+  FROM grade g JOIN enrollment e USING (std_no, lec_no) JOIN lecture l USING (lec_no)
+  JOIN course c USING (crs_cd) JOIN semester s USING (sem_no)
+  WHERE s.yr = 2026 AND s.sem_type = 'SECOND' AND c.eval_type = 'GRADE' AND e.std_no = '20260001' AND e.enrl_stat = 'ENROLLED') x
+WHERE gpa IS NULL OR gpa <> 4.0;
+
+-- CHECK 신청이 시작된 신청 대상 학기에 강의실 미배정 대면 수업(의도한 사례 1건) | T0:0, T1:1, T2:1
 SELECT COUNT(DISTINCT t.lec_no) FROM lecture_time_slot t JOIN lecture l USING (lec_no) JOIN semester s USING (sem_no)
 WHERE s.yr = 2027 AND s.sem_type = 'FIRST' AND l.lec_stat = 'OPEN' AND t.cls_type = 'OFFLINE' AND t.room_cd IS NULL
   AND EXISTS (SELECT 1 FROM academic_schedule a WHERE a.sem_no = l.sem_no AND a.schd_type = 'ENROLL' AND a.start_dtm <= @now);
