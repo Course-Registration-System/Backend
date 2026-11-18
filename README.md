@@ -11,7 +11,9 @@
 | DB 접근 | JdbcTemplate + 직접 작성한 SQL (ORM 사용 안 함) |
 | 포맷터 | Spotless (Palantir Java Format) |
 | 빌드 | Gradle (wrapper 포함, 별도 설치 불필요) |
-| DB | MySQL 8.4 (테스트는 H2 인메모리) |
+| DB | MySQL 8.4 |
+| 스키마 관리 | Flyway (적용 예정) |
+| 테스트 DB | Testcontainers MySQL 8.4 (적용 예정) |
 
 ## 실행 방법
 
@@ -27,7 +29,9 @@
    ```
 4. 확인: http://localhost:8080/api/health → `{"status":"ok", ...}`
 
-테이블은 자동 생성되지 않습니다. DDL 은 Docs 레포의 물리적 데이터 모델을 기준으로 SQL 파일로 관리하고, MySQL 에 직접 실행합니다.
+테이블은 Flyway가 서버 시작 시 만듭니다(적용 예정). DDL 은 Docs 레포의 물리적 데이터 모델(`schema.sql`)을 기준으로 `src/main/resources/db/migration/` 에 `V1__init_schema.sql` 로 두고, 이후 변경은 `V2__설명.sql` 처럼 새 파일로 쌓습니다. 적용된 파일은 고치지 않습니다.
+
+적용 전까지는 지금처럼 DDL 을 MySQL 에 직접 실행합니다.
 
 ## 코드 포맷
 
@@ -43,7 +47,9 @@
 ./gradlew test
 ```
 
-MySQL 없이 H2로 실행됩니다 (`src/test/resources/application.yml`).
+Testcontainers 로 MySQL 8.4 컨테이너를 띄워 실행합니다(적용 예정). Docker 가 켜져 있어야 합니다. 스키마가 MySQL 전용 문법(함수 인덱스, CHECK 제약)을 써서 H2 에서는 테이블을 만들 수 없기 때문입니다.
+
+적용 전까지는 H2 로 실행됩니다 (`src/test/resources/application.yml`).
 
 ## 하지 않는 것
 
@@ -53,12 +59,65 @@ MySQL 없이 H2로 실행됩니다 (`src/test/resources/application.yml`).
 
 ```
 com.crs.backend
-├─ common      공통 (예외 처리, 응답 포맷, 헬스체크)
-├─ auth        로그인
-├─ course      강의
-├─ enrollment  수강신청·장바구니·시간표
-├─ grade       성적
-└─ admin       학기·기간·사용자 관리
+├─ common      공통 (예외 처리, 응답 포맷, 헬스체크, 현재 시각)
+│  └─ auth     토큰 검증, 로그인 사용자 정보(CurrentUser), 권한 검사
+├─ user        로그인·토큰 발급, 계정 등록·수정·비활성화 (USR-01·02)
+├─ academic    학기·학사일정, 최대학점 산정, 대시보드 (ACA-01·04)
+├─ course      과목, 선수과목 (ACA-02)
+├─ lecture     강의 개설·검색, 담당 강의, 수강생 명단, 강의계획서, 조교 (ACA-03, REG-01, LEC-01~04)
+├─ enrollment  장바구니, 수강신청·취소, 신청 현황, 시간표 (REG-02~05)
+└─ grade       성적 입력·확정·조회 (GRD-01~03)
+```
+
+- 패키지는 업무 영역으로 나눕니다. 이름은 용어사전을 따릅니다: `course` 는 **과목**(교육과정 단위), `lecture` 는 **강의**(학기·분반으로 개설된 과목)입니다.
+- `common.auth` 는 토큰만 보고 DB 를 읽지 않습니다. 로그인처럼 `user_account` 를 읽는 업무는 `user` 에 둡니다. 공통 코드가 업무 패키지에 의존하지 않게 하기 위해서입니다.
+- 관리자 기능은 따로 모으지 않고 해당 업무 패키지에 둡니다. 관리자 전용 API 는 `/api/admin/**` 경로와 권한 검사로 구분합니다.
+- 괄호 안은 Docs 레포 업무분석서의 단위업무 번호입니다.
+
+## 패키지 안 구성
+
+업무 패키지마다 아래 이름을 씁니다. `enrollment` 를 예로 듭니다.
+
+```
+enrollment
+├─ EnrollmentController   HTTP 요청·응답만 다룸
+├─ EnrollmentService      업무 규칙과 트랜잭션(@Transactional)
+├─ EnrollmentRepository   SQL (JdbcTemplate / NamedParameterJdbcTemplate)
+├─ Enrollment             테이블 한 행 (record)
+└─ dto
+   ├─ EnrollmentRequest   요청 본문 (record + Bean Validation)
+   └─ EnrollmentResponse  응답 본문 (record)
+```
+
+- 호출 방향은 Controller → Service → Repository 한 방향입니다. Controller 에서 Repository 를 바로 부르지 않습니다.
+- SQL 은 Repository 에만 씁니다.
+- 다른 모듈의 테이블은 JOIN 으로 읽기만 합니다. 쓰기가 필요하면 그 테이블을 맡은 모듈의 Service 를 부릅니다.
+- 클래스 이름은 용어사전의 물리명을 단수형으로 씁니다(`lecture` → `Lecture`, `course_cart` → `CourseCart`).
+
+## 오류 응답
+
+오류는 [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) 형식의 Spring `ProblemDetail`(`application/problem+json`)로 돌려줍니다. 성공 응답은 감싸지 않고 결과를 그대로 돌려줍니다.
+
+- 업무 규칙 위반은 `common` 의 `BusinessException(ErrorCode)` 로 던지고, `common` 의 `@RestControllerAdvice` 가 `ProblemDetail` 로 바꿉니다.
+- `ErrorCode` 는 HTTP 상태와 영문 대문자 코드를 함께 가집니다. 프론트는 `code` 로 경우를 구분합니다.
+
+| 상태 | 쓰는 경우 | `code` 예 |
+| --- | --- | --- |
+| 400 | 입력 형식 오류(Bean Validation 실패) | `INVALID_INPUT` |
+| 401 | 로그인하지 않음, 토큰 만료 | `UNAUTHENTICATED` |
+| 403 | 권한 없음(학생이 관리자 API 호출 등) | `FORBIDDEN` |
+| 404 | 대상 없음 | `LECTURE_NOT_FOUND` |
+| 409 | 업무 규칙 위반(정원 초과, 시간 겹침, 기간 아님 등) | `LECTURE_FULL`, `TIME_CONFLICT` |
+
+```json
+{
+  "type": "about:blank",
+  "title": "Conflict",
+  "status": 409,
+  "detail": "정원이 마감된 강의입니다.",
+  "instance": "/api/enrollments",
+  "code": "LECTURE_FULL"
+}
 ```
 
 ## 규칙
