@@ -1,6 +1,8 @@
 package com.crs.backend.support;
 
+import javax.sql.DataSource;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.mysql.MySQLContainer;
@@ -18,12 +20,13 @@ public abstract class IntegrationTest {
 
     private static final String MIGRATOR_PASSWORD = "migrator-test";
     private static final String APP_PASSWORD = "app-test";
+    private static final String READONLY_PASSWORD = "readonly-test";
 
     private static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4")
             .withDatabaseName("crs")
             .withEnv("MIGRATOR_DB_PASSWORD", MIGRATOR_PASSWORD)
             .withEnv("APP_DB_PASSWORD", APP_PASSWORD)
-            .withEnv("READONLY_DB_PASSWORD", "readonly-test")
+            .withEnv("READONLY_DB_PASSWORD", READONLY_PASSWORD)
             .withEnv("TZ", "Asia/Seoul")
             .withCommand("--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci")
             .withCopyFileToContainer(
@@ -41,5 +44,16 @@ public abstract class IntegrationTest {
         registry.add("spring.datasource.password", () -> APP_PASSWORD);
         registry.add("spring.flyway.user", () -> "migrator");
         registry.add("spring.flyway.password", () -> MIGRATOR_PASSWORD);
+    }
+
+    /** 지정한 계정(root, app, readonly)으로 접속하는 DataSource. 권한별 동작을 확인할 때 씁니다. */
+    protected static DataSource dataSourceAs(String user) {
+        String password = switch (user) {
+            case "root" -> MYSQL.getPassword();
+            case "app" -> APP_PASSWORD;
+            case "readonly" -> READONLY_PASSWORD;
+            default -> throw new IllegalArgumentException(user);
+        };
+        return new DriverManagerDataSource(MYSQL.getJdbcUrl(), user, password);
     }
 }
