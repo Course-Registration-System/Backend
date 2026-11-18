@@ -74,6 +74,52 @@ com.crs.backend
 - 관리자 기능은 따로 모으지 않고 해당 업무 패키지에 둡니다. 관리자 전용 API 는 `/api/admin/**` 경로와 권한 검사로 구분합니다.
 - 괄호 안은 Docs 레포 업무분석서의 단위업무 번호입니다.
 
+## 패키지 안 구성
+
+업무 패키지마다 아래 이름을 씁니다. `enrollment` 를 예로 듭니다.
+
+```
+enrollment
+├─ EnrollmentController   HTTP 요청·응답만 다룸
+├─ EnrollmentService      업무 규칙과 트랜잭션(@Transactional)
+├─ EnrollmentRepository   SQL (JdbcTemplate / NamedParameterJdbcTemplate)
+├─ Enrollment             테이블 한 행 (record)
+└─ dto
+   ├─ EnrollmentRequest   요청 본문 (record + Bean Validation)
+   └─ EnrollmentResponse  응답 본문 (record)
+```
+
+- 호출 방향은 Controller → Service → Repository 한 방향입니다. Controller 에서 Repository 를 바로 부르지 않습니다.
+- SQL 은 Repository 에만 씁니다.
+- 다른 모듈의 테이블은 JOIN 으로 읽기만 합니다. 쓰기가 필요하면 그 테이블을 맡은 모듈의 Service 를 부릅니다.
+- 클래스 이름은 용어사전의 물리명을 단수형으로 씁니다(`lecture` → `Lecture`, `course_cart` → `CourseCart`).
+
+## 오류 응답
+
+오류는 [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) 형식의 Spring `ProblemDetail`(`application/problem+json`)로 돌려줍니다. 성공 응답은 감싸지 않고 결과를 그대로 돌려줍니다.
+
+- 업무 규칙 위반은 `common` 의 `BusinessException(ErrorCode)` 로 던지고, `common` 의 `@RestControllerAdvice` 가 `ProblemDetail` 로 바꿉니다.
+- `ErrorCode` 는 HTTP 상태와 영문 대문자 코드를 함께 가집니다. 프론트는 `code` 로 경우를 구분합니다.
+
+| 상태 | 쓰는 경우 | `code` 예 |
+| --- | --- | --- |
+| 400 | 입력 형식 오류(Bean Validation 실패) | `INVALID_INPUT` |
+| 401 | 로그인하지 않음, 토큰 만료 | `UNAUTHENTICATED` |
+| 403 | 권한 없음(학생이 관리자 API 호출 등) | `FORBIDDEN` |
+| 404 | 대상 없음 | `LECTURE_NOT_FOUND` |
+| 409 | 업무 규칙 위반(정원 초과, 시간 겹침, 기간 아님 등) | `LECTURE_FULL`, `TIME_CONFLICT` |
+
+```json
+{
+  "type": "about:blank",
+  "title": "Conflict",
+  "status": 409,
+  "detail": "정원이 마감된 강의입니다.",
+  "instance": "/api/enrollments",
+  "code": "LECTURE_FULL"
+}
+```
+
 ## 규칙
 
 팀 규칙은 [Docs/TEAM_RULES.md](https://github.com/Course-Registration-System/Docs/blob/main/TEAM_RULES.md) 를 따릅니다. main 은 PR 로만 병합됩니다.
