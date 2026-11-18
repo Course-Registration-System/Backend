@@ -55,6 +55,15 @@ DDL 은 Docs 레포의 물리적 데이터 모델(`schema.sql`, `grants.sql`)이
 - `V1__init_schema.sql`: 기준 시점의 `schema.sql`. 적용된 `V` 파일은 고치지 않고, 변경은 `V2__설명.sql` 처럼 새 파일로 쌓습니다.
 - `R__grants.sql`: `grants.sql`. 바뀌면 Flyway 가 다시 적용합니다. 데이터베이스 이름 `crs` 를 가정합니다.
 
+## 시드 데이터
+
+서버가 시작할 때 Flyway 가 시드(`db/seed/R__seed_dev.sql`)도 함께 넣습니다. 개발·테스트·시연 모두 이 데이터를 씁니다.
+
+- 모듈별로 확인할 사례, 로그인 계정, 시점은 [docs/seed-data.md](docs/seed-data.md) 에 있습니다. 모든 계정의 비밀번호는 `test1234!` 입니다.
+- 앱의 현재 시각은 `.env` 의 `CLOCK_FIXED_AT` 으로 고정합니다(기본 T0 = 2027-02-10 18:00). 현재 시각이 필요한 코드는 `Clock` 빈을 주입받아 씁니다. `LocalDateTime.now()` 를 직접 부르거나 SQL 에서 `NOW()` 를 쓰지 않습니다.
+- 시드는 `tools/seed/build_seed.py` 가 만듭니다(Python 3, 표준 라이브러리만). 생성물을 직접 고치지 말고 생성기를 고친 뒤 `python -X utf8 tools/seed/build_seed.py` 로 다시 만듭니다. `SeedDataTest` 가 시드의 업무 규칙 위반을 검사합니다.
+- 시연용 데이터 제어 SQL 은 [demo/](demo/README.md) 에 있습니다.
+
 ## 코드 포맷
 
 ```bash
