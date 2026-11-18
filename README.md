@@ -12,26 +12,48 @@
 | 포맷터 | Spotless (Palantir Java Format) |
 | 빌드 | Gradle (wrapper 포함, 별도 설치 불필요) |
 | DB | MySQL 8.4 |
-| 스키마 관리 | Flyway (적용 예정) |
-| 테스트 DB | Testcontainers MySQL 8.4 (적용 예정) |
+| 스키마 관리 | Flyway |
+| 테스트 DB | Testcontainers MySQL 8.4 |
 
 ## 실행 방법
 
-1. JDK 21 설치 (`java -version` 으로 확인)
-2. MySQL 준비 — Docker가 있으면 아래 한 줄이면 됩니다.
+1. JDK 21, Docker 설치 (`java -version`, `docker version` 으로 확인)
+2. `.env.example` 을 `.env` 로 복사하고 비밀번호 4개를 채웁니다. 로컬에서는 아무 값이나 괜찮습니다. `.env` 는 커밋하지 않습니다.
+3. MySQL 실행
    ```bash
    docker compose up -d
    ```
-   직접 설치한 MySQL을 쓰려면 `crs` 데이터베이스와 `crs` / `crs` 계정을 만들고, `.env.example` 을 복사한 `.env` 에서 값을 맞춥니다.
-3. 서버 실행
+   첫 기동 때 `docker/mysql/initdb/01-users.sh` 가 DB 계정을 만듭니다. 3306 포트를 이미 쓰고 있으면 `.env` 의 `DB_PORT` 를 바꿉니다.
+4. 서버 실행
    ```bash
    ./gradlew bootRun        # Windows: gradlew.bat bootRun
    ```
-4. 확인: http://localhost:8080/api/health → `{"status":"ok", ...}`
+   시작할 때 Flyway 가 테이블과 권한을 적용합니다.
+5. 확인: http://localhost:8080/api/health → `{"status":"ok", ...}`
 
-테이블은 Flyway가 서버 시작 시 만듭니다(적용 예정). DDL 은 Docs 레포의 물리적 데이터 모델(`schema.sql`)을 기준으로 `src/main/resources/db/migration/` 에 `V1__init_schema.sql` 로 두고, 이후 변경은 `V2__설명.sql` 처럼 새 파일로 쌓습니다. 적용된 파일은 고치지 않습니다.
+DB 를 처음 상태로 되돌리려면 `docker compose down -v` 후 3번부터 다시 합니다(데이터가 모두 지워집니다).
 
-적용 전까지는 지금처럼 DDL 을 MySQL 에 직접 실행합니다.
+### 설정값
+
+`docker compose` 와 백엔드가 같은 `.env` 를 읽습니다. 백엔드는 `application.yml` 의 `spring.config.import: optional:file:.env[.properties]` 로 읽고, 파일이 없으면 환경 변수를 씁니다.
+
+### DB 계정
+
+| 계정 | 쓰는 곳 | 권한 |
+| --- | --- | --- |
+| `migrator` | Flyway (서버 시작 시) | `crs` 의 DDL·GRANT. 런타임에는 쓰지 않음 |
+| `app` | 백엔드 런타임 | 조회 전부, 테이블별 추가·수정, 업무상 행을 지우는 5개 테이블만 삭제. DDL 없음 |
+| `readonly` | 실험·분석 스크립트 | 조회만 |
+| `root` | 계정 생성, 시연 중 데이터 제어 | 전부 |
+
+`app` 권한은 `R__grants.sql` 에 있습니다. 권한 밖의 SQL(예: 이력 테이블 DELETE)은 DB 가 거부합니다.
+
+### 스키마 변경
+
+DDL 은 Docs 레포의 물리적 데이터 모델(`schema.sql`, `grants.sql`)이 기준입니다. `src/main/resources/db/migration/` 에 아래처럼 둡니다.
+
+- `V1__init_schema.sql`: 기준 시점의 `schema.sql`. 적용된 `V` 파일은 고치지 않고, 변경은 `V2__설명.sql` 처럼 새 파일로 쌓습니다.
+- `R__grants.sql`: `grants.sql`. 바뀌면 Flyway 가 다시 적용합니다. 데이터베이스 이름 `crs` 를 가정합니다.
 
 ## 코드 포맷
 
@@ -47,9 +69,10 @@
 ./gradlew test
 ```
 
-Testcontainers 로 MySQL 8.4 컨테이너를 띄워 실행합니다(적용 예정). Docker 가 켜져 있어야 합니다. 스키마가 MySQL 전용 문법(함수 인덱스, CHECK 제약)을 써서 H2 에서는 테이블을 만들 수 없기 때문입니다.
+Testcontainers 로 MySQL 8.4 컨테이너를 띄워 실행합니다. Docker 가 켜져 있어야 합니다. 스키마가 MySQL 전용 문법(함수 인덱스, CHECK 제약)을 써서 H2 에서는 테이블을 만들 수 없기 때문입니다.
 
-적용 전까지는 H2 로 실행됩니다 (`src/test/resources/application.yml`).
+- DB 가 필요한 테스트는 `support.IntegrationTest` 를 상속합니다. 컨테이너 하나를 테스트 실행 전체에서 같이 씁니다.
+- 운영과 같은 순서로 준비합니다(계정 생성 → Flyway). 테스트도 `app` 계정으로 접속하므로 권한 밖의 SQL 은 테스트에서도 실패합니다.
 
 ## 하지 않는 것
 

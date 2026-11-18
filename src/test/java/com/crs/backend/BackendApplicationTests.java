@@ -1,10 +1,9 @@
 package com.crs.backend;
 
+import com.crs.backend.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
-class BackendApplicationTests {
+class BackendApplicationTests extends IntegrationTest {
 
     @Test
     void contextLoads() {}

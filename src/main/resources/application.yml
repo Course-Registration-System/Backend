@@ -1,11 +1,19 @@
 spring:
   application:
     name: backend
+  # 프로젝트 루트의 .env 를 설정값으로 읽습니다. 없으면 건너뜁니다(환경 변수로 넘겨도 됩니다).
+  config:
+    import: optional:file:.env[.properties]
+  # 런타임 계정 app: 데이터 조회·추가·수정만 합니다(DDL 없음).
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:crs}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-    username: ${DB_USER:crs}
-    password: ${DB_PASSWORD:crs}
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${MYSQL_DATABASE:crs}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: app
+    password: ${APP_DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  # 스키마 계정 migrator: 시작할 때 db/migration 의 V*·R* 파일을 적용합니다.
+  flyway:
+    user: migrator
+    password: ${MIGRATOR_DB_PASSWORD}
 
 server:
   port: ${SERVER_PORT:8080}

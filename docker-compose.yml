@@ -1,19 +1,23 @@
-# 로컬 개발용 MySQL. `docker compose up -d` 로 실행합니다.
+# 로컬 개발용 MySQL. .env.example 을 .env 로 복사해 비밀번호를 채운 뒤 `docker compose up -d` 로 실행합니다.
+# 첫 기동 때 docker/mysql/initdb/01-users.sh 가 migrator·app·readonly 계정을 만듭니다.
+# 테이블과 권한은 백엔드가 시작할 때 Flyway 가 migrator 계정으로 적용합니다.
 services:
   mysql:
     image: mysql:8.4
     container_name: crs-mysql
     ports:
-      - "3306:3306"
+      - "${DB_PORT:-3306}:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: crs
-      MYSQL_USER: crs
-      MYSQL_PASSWORD: crs
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?.env 에 MYSQL_ROOT_PASSWORD 를 채우세요}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-crs}
+      MIGRATOR_DB_PASSWORD: ${MIGRATOR_DB_PASSWORD:?.env 에 MIGRATOR_DB_PASSWORD 를 채우세요}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?.env 에 APP_DB_PASSWORD 를 채우세요}
+      READONLY_DB_PASSWORD: ${READONLY_DB_PASSWORD:?.env 에 READONLY_DB_PASSWORD 를 채우세요}
       TZ: Asia/Seoul
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./docker/mysql/initdb:/docker-entrypoint-initdb.d:ro
 
 volumes:
   mysql-data:
