@@ -30,7 +30,8 @@ public class AuthService {
         // 계정이 없을 때와 비밀번호가 틀릴 때 같은 오류로 처리
         UserAccount account = userAccountRepository
                 .findByUsrNo(request.usrNo())
-                .filter(found -> passwordEncoder.matches(request.password(), found.pwd()))
+                .filter(found -> !Passwords.tooLong(request.password())
+                        && passwordEncoder.matches(request.password(), found.pwd()))
                 .orElseThrow(() -> new BusinessException(ErrorCode.LOGIN_FAILED));
 
         // 비활성 계정 막기
