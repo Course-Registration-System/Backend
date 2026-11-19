@@ -26,3 +26,8 @@ crs:
   clock:
     # 서버 시작 시 앱의 현재 시각. 기본값은 시드 기준 시각 T0. 비우면 실제 시각을 씁니다. 시점 목록은 docs/seed-data.md
     fixed-at: ${CLOCK_FIXED_AT:2026-12-21T10:00:00}
+  jwt:
+    # 토큰 서명 키. base64 로 32바이트 이상(.env 의 JWT_SECRET)
+    secret: ${JWT_SECRET}
+    # 수강신청(10~15시)을 한 번 로그인으로 마칠 수 있는 길이
+    valid-hours: 6
