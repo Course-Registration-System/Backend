@@ -21,6 +21,7 @@ public abstract class IntegrationTest {
     private static final String MIGRATOR_PASSWORD = "migrator-test";
     private static final String APP_PASSWORD = "app-test";
     private static final String READONLY_PASSWORD = "readonly-test";
+    private static final String JWT_SECRET = "Y3JzLXRlc3Qtb25seS1qd3Qtc2lnbmluZy1rZXktMzJieXRlcys=";
 
     private static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4")
             .withDatabaseName("crs")
@@ -44,6 +45,7 @@ public abstract class IntegrationTest {
         registry.add("spring.datasource.password", () -> APP_PASSWORD);
         registry.add("spring.flyway.user", () -> "migrator");
         registry.add("spring.flyway.password", () -> MIGRATOR_PASSWORD);
+        registry.add("crs.jwt.secret", () -> JWT_SECRET);
     }
 
     /** 지정한 계정(root, app, readonly)으로 접속하는 DataSource. 권한별 동작을 확인할 때 씁니다. */
