@@ -104,9 +104,10 @@ class AcademicSchedulePolicyTest extends IntegrationTest {
 
     @Test
     void 일정이_없는_학기는_기한이_비어_있다() {
-        jdbc.update("INSERT INTO semester (sem_no, yr, sem_type, cur_sem_yn) VALUES (99, 2028, 'FIRST', 'N')");
-        assertThat(policy.cartStart(99)).isEmpty();
-        assertThat(policy.adjustEnd(99)).isEmpty();
+        withCommittedSemester(99, "FIRST", () -> {
+            assertThat(policy.cartStart(99)).isEmpty();
+            assertThat(policy.adjustEnd(99)).isEmpty();
+        });
     }
 
     @Test
@@ -115,8 +116,23 @@ class AcademicSchedulePolicyTest extends IntegrationTest {
         assertThat(policy.maxCredit(Student.DEMO, Semester.Y2027_FIRST)).isEqualTo(18); // T0 에는 2027-1 산정 전
 
         // 산정 결과가 없는 새 계절학기
-        jdbc.update("INSERT INTO semester (sem_no, yr, sem_type, cur_sem_yn) VALUES (98, 2027, 'SUMMER', 'N')");
-        assertThat(policy.maxCredit(Student.ON_LEAVE, 98)).isEqualTo(3); // 휴학
-        assertThat(policy.maxCredit(Student.DEMO, 98)).isEqualTo(6); // 재학
+        withCommittedSemester(98, "SUMMER", () -> {
+            assertThat(policy.maxCredit(Student.ON_LEAVE, 98)).isEqualTo(3); // 휴학
+            assertThat(policy.maxCredit(Student.DEMO, 98)).isEqualTo(6); // 재학
+        });
+    }
+
+    /**
+     * 판정은 테스트 트랜잭션 밖에서 읽으므로(NOT_SUPPORTED) 준비 데이터는 커밋해야 보입니다. app 계정은 학기를 지울 수 없어 root 로 넣고
+     * 지웁니다.
+     */
+    private void withCommittedSemester(int semNo, String semType, Runnable assertions) {
+        JdbcTemplate root = new JdbcTemplate(dataSourceAs("root"));
+        root.update("INSERT INTO semester (sem_no, yr, sem_type, cur_sem_yn) VALUES (?, 2030, ?, 'N')", semNo, semType);
+        try {
+            assertions.run();
+        } finally {
+            root.update("DELETE FROM semester WHERE sem_no = ?", semNo);
+        }
     }
 }
