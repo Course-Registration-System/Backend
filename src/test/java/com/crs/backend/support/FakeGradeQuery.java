@@ -4,13 +4,15 @@ import com.crs.backend.grade.GradeQuery;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 /**
  * 테스트용 GradeQuery. 성적 모듈의 실제 구현이 들어오면 지우고, 수강신청 테스트는 시드 성적으로 바꿉니다.
  *
- * <p>정한 성적만 돌려줍니다. 테스트가 끝나면 reset() 으로 비웁니다.
+ * <p>정한 성적만 돌려줍니다. 테스트가 끝나면 reset() 으로 비웁니다. 실제 구현(ConfirmedGradeQuery)도 빈이라 @Primary 로 이쪽이 주입됩니다.
  */
+@Primary
 @Component
 public class FakeGradeQuery implements GradeQuery {
 
