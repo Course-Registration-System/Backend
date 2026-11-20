@@ -1,0 +1,173 @@
+package com.crs.backend.enrollment;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.crs.backend.common.auth.JwtProvider;
+import com.crs.backend.common.auth.Role;
+import com.crs.backend.support.Bearer;
+import com.crs.backend.support.FakeSchedulePolicy;
+import com.crs.backend.support.IntegrationTest;
+import com.crs.backend.support.SeedFixtures.Account;
+import com.crs.backend.support.SeedFixtures.Lecture;
+import com.crs.backend.support.SeedFixtures.Semester;
+import com.crs.backend.support.SeedFixtures.Student;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.annotation.Transactional;
+
+/** 기간 판정은 FakeSchedulePolicy 로 정합니다. 기본은 2027-1 장바구니 기간입니다. */
+@AutoConfigureMockMvc
+@Transactional
+class CartControllerTest extends IntegrationTest {
+
+    // 2027-1 채플(1030001-1). 0.5학점이지만 담은 학점에 넣지 않는다
+    private static final int CHAPEL = 211;
+
+    // 2026 겨울학기 강의
+    private static final int WINTER = 184;
+
+    @Autowired
+    MockMvc mvc;
+
+    @Autowired
+    JwtProvider jwtProvider;
+
+    @Autowired
+    JdbcTemplate jdbc;
+
+    @Autowired
+    FakeSchedulePolicy schedulePolicy;
+
+    @BeforeEach
+    void setUp() {
+        schedulePolicy.at(Semester.Y2027_FIRST, true);
+    }
+
+    @AfterEach
+    void tearDown() {
+        schedulePolicy.reset();
+    }
+
+    @Test
+    void 담으면_담은_인원과_학점이_보인다() throws Exception {
+        double credit = jdbc.queryForObject(
+                "SELECT c.crdt FROM lecture l JOIN course c ON c.crs_cd = l.crs_cd WHERE l.lec_no = ?",
+                Double.class,
+                Lecture.ONE_SEAT_LEFT);
+
+        add(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT).andExpect(status().isCreated());
+        add(Student.GPA_JUST_UNDER_4, Lecture.ONE_SEAT_LEFT).andExpect(status().isCreated());
+        add(Student.GPA_EXACTLY_4, CHAPEL)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.semNo").value(Semester.Y2027_FIRST))
+                .andExpect(jsonPath("$.items[0].lecNo").value(Lecture.ONE_SEAT_LEFT))
+                .andExpect(jsonPath("$.items[0].cartCnt").value(2))
+                .andExpect(jsonPath("$.items[0].timeSlots").isNotEmpty())
+                .andExpect(jsonPath("$.items[1].lecNo").value(CHAPEL))
+                .andExpect(jsonPath("$.cartCredits").value(credit))
+                .andExpect(jsonPath("$.maxCredit").value(18));
+    }
+
+    @Test
+    void 정원이_찬_강의도_담을_수_있다() throws Exception {
+        add(Student.GPA_EXACTLY_4, Lecture.FULL).andExpect(status().isCreated());
+    }
+
+    @Test
+    void 장바구니_기간이_아니면_담거나_뺄_수_없다() throws Exception {
+        schedulePolicy.at(Semester.Y2027_FIRST, false);
+        add(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CART_CLOSED"));
+        remove(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT)
+                .andExpect(jsonPath("$.code").value("CART_CLOSED"));
+        // 수강신청·정정 기간에도 목록은 본다
+        mvc.perform(get("/api/cart").header(HttpHeaders.AUTHORIZATION, student(Student.GPA_EXACTLY_4)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void 신청_대상_학기가_없으면_목록도_볼_수_없다() throws Exception {
+        schedulePolicy.at(null, false);
+        mvc.perform(get("/api/cart").header(HttpHeaders.AUTHORIZATION, student(Student.GPA_EXACTLY_4)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("NO_REGISTRATION_SEMESTER"));
+    }
+
+    @Test
+    void 같은_강의는_두_번_담을_수_없다() throws Exception {
+        add(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT).andExpect(status().isCreated());
+        add(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DUPLICATE_CART"));
+    }
+
+    @Test
+    void 폐강_강의와_다른_학기_강의는_담을_수_없다() throws Exception {
+        add(Student.GPA_EXACTLY_4, Lecture.CLOSED).andExpect(jsonPath("$.code").value("LECTURE_CLOSED"));
+        add(Student.GPA_EXACTLY_4, Lecture.NOT_ENTERED)
+                .andExpect(jsonPath("$.code").value("OTHER_SEMESTER_LECTURE"));
+        add(Student.GPA_EXACTLY_4, 999999).andExpect(jsonPath("$.code").value("LECTURE_NOT_FOUND"));
+    }
+
+    @Test
+    void 정규학기에는_휴학생과_졸업생이_담을_수_없다() throws Exception {
+        add(Student.ON_LEAVE, Lecture.ONE_SEAT_LEFT)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("STUDENT_STATUS_NOT_ALLOWED"));
+        jdbc.update("UPDATE student SET std_stat = 'GRADUATED' WHERE std_no = ?", Student.GPA_EXACTLY_4);
+        add(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT)
+                .andExpect(jsonPath("$.code").value("STUDENT_STATUS_NOT_ALLOWED"));
+    }
+
+    @Test
+    void 계절학기에는_휴학생도_담을_수_있다() throws Exception {
+        schedulePolicy.at(Semester.Y2026_WINTER, true);
+        add(Student.ON_LEAVE, WINTER).andExpect(status().isCreated());
+    }
+
+    @Test
+    void 뺀_강의는_목록에서_사라진다() throws Exception {
+        add(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT).andExpect(status().isCreated());
+        remove(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT).andExpect(status().isNoContent());
+        mvc.perform(get("/api/cart").header(HttpHeaders.AUTHORIZATION, student(Student.GPA_EXACTLY_4)))
+                .andExpect(jsonPath("$.items").isEmpty());
+        remove(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CART_NOT_FOUND"));
+    }
+
+    @Test
+    void 학생이_아니면_쓸_수_없다() throws Exception {
+        mvc.perform(get("/api/cart")
+                        .header(HttpHeaders.AUTHORIZATION, Bearer.of(jwtProvider, Account.ADMIN, Role.ADMIN)))
+                .andExpect(status().isForbidden());
+    }
+
+    private ResultActions add(String stdNo, int lecNo) throws Exception {
+        return mvc.perform(post("/api/cart")
+                .header(HttpHeaders.AUTHORIZATION, student(stdNo))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"lecNo\": " + lecNo + "}"));
+    }
+
+    private ResultActions remove(String stdNo, int lecNo) throws Exception {
+        return mvc.perform(delete("/api/cart/" + lecNo).header(HttpHeaders.AUTHORIZATION, student(stdNo)));
+    }
+
+    private String student(String stdNo) {
+        return Bearer.of(jwtProvider, stdNo, Role.STUDENT);
+    }
+}
