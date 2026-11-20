@@ -102,12 +102,8 @@ public class CartService {
         }
     }
 
-    /** 정규학기는 재학생만, 계절학기는 재학·휴학생. 졸업생은 담을 수 없습니다. */
     private void checkStudentStatus(String stdNo, int semNo) {
         StdStat stat = cartRepository.findStdStat(stdNo).orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN));
-        boolean allowed = stat == StdStat.ATTENDING || (stat == StdStat.ON_LEAVE && cartRepository.isSeasonal(semNo));
-        if (!allowed) {
-            throw new BusinessException(ErrorCode.STUDENT_STATUS_NOT_ALLOWED);
-        }
+        StudentStatusRule.check(stat, cartRepository.isSeasonal(semNo));
     }
 }

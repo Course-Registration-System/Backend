@@ -15,6 +15,9 @@ public interface SchedulePolicy {
     /** 지금이 그 학기의 장바구니 기간인지. */
     boolean cartOpen(int semNo);
 
+    /** 지금 그 학년 학생이 신청·취소할 수 있는지: 본인 학년 수강신청일, 전체 수강신청일, 정정 기간. */
+    boolean enrollOpen(int semNo, int yrLvl);
+
     /** 학생의 그 학기 최대학점. 산정 결과가 없으면 정규학기 18, 계절학기는 재학 6·휴학 3 입니다. */
     int maxCredit(String stdNo, int semNo);
 }

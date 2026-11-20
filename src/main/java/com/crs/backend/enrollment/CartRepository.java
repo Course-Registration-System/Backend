@@ -1,15 +1,10 @@
 package com.crs.backend.enrollment;
 
 import com.crs.backend.enrollment.dto.CartItemResponse;
-import com.crs.backend.lecture.ClsType;
-import com.crs.backend.lecture.Dow;
 import com.crs.backend.lecture.LecStat;
 import com.crs.backend.lecture.dto.TimeSlotResponse;
 import com.crs.backend.user.StdStat;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -63,30 +58,11 @@ public class CartRepository {
     }
 
     private Map<Integer, List<TimeSlotResponse>> findSlots(String stdNo, int semNo) {
-        Map<Integer, List<TimeSlotResponse>> slots = new HashMap<>();
-        jdbc.query(
-                """
-                SELECT t.lec_no, t.dow, t.start_tm, t.end_tm, t.cls_type, t.room_cd, r.room_nm
-                  FROM course_cart k
+        return TimeSlots.load(jdbc, """
+                course_cart k
                   JOIN lecture l ON l.lec_no = k.lec_no
                   JOIN lecture_time_slot t ON t.lec_no = k.lec_no
-                  LEFT JOIN classroom r ON r.room_cd = t.room_cd
-                 WHERE k.std_no = ? AND l.sem_no = ?
-                 ORDER BY FIELD(t.dow, 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'), t.start_tm
-                """,
-                rs -> {
-                    slots.computeIfAbsent(rs.getInt("lec_no"), key -> new ArrayList<>())
-                            .add(new TimeSlotResponse(
-                                    Dow.valueOf(rs.getString("dow")),
-                                    rs.getObject("start_tm", LocalTime.class),
-                                    rs.getObject("end_tm", LocalTime.class),
-                                    ClsType.valueOf(rs.getString("cls_type")),
-                                    rs.getString("room_cd"),
-                                    rs.getString("room_nm")));
-                },
-                stdNo,
-                semNo);
-        return slots;
+                """, "k.std_no = ? AND l.sem_no = ?", stdNo, semNo);
     }
 
     public Optional<StdStat> findStdStat(String stdNo) {
