@@ -148,12 +148,33 @@ class LectureAdminControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.code").value("LECTURE_CLOSED"));
     }
 
+    // 아래 세 테스트의 2026-2 는 정정 기간(2026-09-08 종료)이 끝난 학기다
+
     @Test
-    void 정정_기간이_끝난_학기의_강의는_폐강할_수_없다() throws Exception {
-        // 2026-2 정정 기간은 2026-09-08 에 끝났다
+    void 정정_기간이_끝나면_강의를_수정할_수_없다() throws Exception {
+        mvc.perform(asAdmin(put("/api/admin/lectures/" + Lecture.NOT_ENTERED))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"profNo": "100002", "cap": 30, "engLec": false, "relGrdExmp": false,
+                                 "timeSlots": [{"dow": "SUN", "startTm": "08:00", "endTm": "09:00"}]}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("UPDATE_PERIOD_OVER"));
+    }
+
+    @Test
+    void 정정_기간이_끝나도_성적_입력_전이면_폐강할_수_있다() throws Exception {
+        mvc.perform(asAdmin(patch("/api/admin/lectures/" + Lecture.NOT_ENTERED + "/close")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lecStat").value("CLOSED"));
+    }
+
+    @Test
+    void 성적_입력이_시작된_강의는_폐강할_수_없다() throws Exception {
+        // 183번은 성적상태가 '입력중'이다
         mvc.perform(asAdmin(patch("/api/admin/lectures/" + Lecture.DEMO_GRADE + "/close")))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("CLOSE_PERIOD_OVER"));
+                .andExpect(jsonPath("$.code").value("CLOSE_AFTER_GRADING"));
     }
 
     @Test

@@ -134,6 +134,11 @@ public class LectureAdminRepository {
                 sectNo);
     }
 
+    /** 성적상태가 '미입력'이 아니면 성적 입력이 시작된 강의입니다. */
+    public boolean gradingStarted(int lecNo) {
+        return exists("SELECT EXISTS (SELECT 1 FROM lecture WHERE lec_no = ? AND grd_stat <> 'NOT_ENTERED')", lecNo);
+    }
+
     private boolean exists(String sql, Object... args) {
         return Boolean.TRUE.equals(jdbc.queryForObject(sql, Boolean.class, args));
     }

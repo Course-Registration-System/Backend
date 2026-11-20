@@ -24,10 +24,11 @@ public enum ErrorCode {
     LECTURE_OPEN_CLOSED(HttpStatus.CONFLICT, "장바구니 기간이 시작돼 강의를 새로 개설할 수 없습니다."),
     ROOM_TIME_CONFLICT(HttpStatus.CONFLICT, "강의실 사용 시간이 다른 강의와 겹칩니다."),
     PROFESSOR_TIME_CONFLICT(HttpStatus.CONFLICT, "담당 교수의 다른 강의와 시간이 겹칩니다."),
-    TIME_CHANGE_CLOSED(HttpStatus.CONFLICT, "수강신청 기간이 시작돼 강의시간·강의실을 바꿀 수 없습니다."),
+    UPDATE_PERIOD_OVER(HttpStatus.CONFLICT, "정정 기간이 끝나 강의를 수정할 수 없습니다."),
+    TIME_CHANGE_CLOSED(HttpStatus.CONFLICT, "수강신청 기간이 시작돼 강의시간·수업유형을 바꿀 수 없습니다."),
     CAPACITY_BELOW_ENROLLED(HttpStatus.CONFLICT, "정원을 현재 신청인원보다 작게 줄일 수 없습니다."),
     LECTURE_CLOSED(HttpStatus.CONFLICT, "폐강된 강의입니다."),
-    CLOSE_PERIOD_OVER(HttpStatus.CONFLICT, "정정 기간이 끝나 폐강할 수 없습니다.");
+    CLOSE_AFTER_GRADING(HttpStatus.CONFLICT, "성적 입력이 시작된 강의는 폐강할 수 없습니다.");
 
     private final HttpStatus status;
     private final String message;

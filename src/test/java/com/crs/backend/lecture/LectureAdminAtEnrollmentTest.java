@@ -28,7 +28,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 2027-1 수강신청일 T1(2027-02-11). 장바구니·수강신청이 시작돼 새 개설과 강의시간 변경은 막히고, 정정 기간 전이라 폐강은 됩니다.
+ * 2027-1 수강신청일 T1(2027-02-11). 새 개설과 강의시간·수업유형 변경은 막히고, 강의실·정원 변경과 폐강은 됩니다.
  */
 @AutoConfigureMockMvc
 @Transactional
@@ -82,6 +82,30 @@ class LectureAdminAtEnrollmentTest extends IntegrationTest {
         update(Lecture.ONE_SEAT_LEFT, COMPILER.formatted(4, "09:30"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("TIME_CHANGE_CLOSED"));
+    }
+
+    @Test
+    void 수강신청이_시작되면_수업유형은_바꿀_수_없다() throws Exception {
+        String online = COMPILER.formatted(4, "09:00")
+                .replace(
+                        "{\"dow\": \"THU\", \"startTm\": \"09:00\", \"endTm\": \"10:15\", \"roomCd\": \"21301\"}",
+                        "{\"dow\": \"THU\", \"startTm\": \"09:00\", \"endTm\": \"10:15\", \"clsType\": \"ONLINE\"}");
+        update(Lecture.ONE_SEAT_LEFT, online)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TIME_CHANGE_CLOSED"));
+    }
+
+    @Test
+    void 수강신청이_시작돼도_강의실은_배정할_수_있다() throws Exception {
+        // 225번 창업과혁신: 대면인데 강의실 미배정(월·수 13:30~14:45, 교수 100004)
+        update(Lecture.NO_ROOM, """
+                        {"profNo": "100004", "cap": 60, "engLec": false, "relGrdExmp": false,
+                         "timeSlots": [
+                           {"dow": "MON", "startTm": "13:30", "endTm": "14:45", "roomCd": "21302"},
+                           {"dow": "WED", "startTm": "13:30", "endTm": "14:45", "roomCd": "21302"}]}
+                        """)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.timeSlots[0].roomCd").value("21302"));
     }
 
     @Test

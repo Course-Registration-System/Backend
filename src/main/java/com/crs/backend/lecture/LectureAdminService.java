@@ -74,12 +74,13 @@ public class LectureAdminService {
         if (current.lecStat() == LecStat.CLOSED) {
             throw new BusinessException(ErrorCode.LECTURE_CLOSED);
         }
+        checkUpdateOpen(current.semNo());
         List<LectureTimeSlot> slots = toSlots(request.timeSlots());
         checkSlots(slots);
         checkProfessor(request.profNo());
 
-        boolean slotsChanged = !sameSlots(current.timeSlots(), slots);
-        if (slotsChanged) {
+        boolean slotsChanged = changed(current.timeSlots(), slots, false);
+        if (changed(current.timeSlots(), slots, true)) {
             checkTimeChangeOpen(current.semNo());
         }
         if (request.cap() < current.enrlCnt()) {
@@ -95,8 +96,9 @@ public class LectureAdminService {
         return get(lecNo);
     }
 
-    // ⑥ 폐강: 강의상태를 바꾸고, 신청을 모두 취소하고, 장바구니에서도 뺀다.
-    // 수강신청과 같은 순서(강의 → 수강신청)로 잠그려고 강의 행부터 잠근다
+    // ⑥ 폐강: 강의상태를 바꾸고, 신청을 모두 취소하고, 장바구니에서도 뺀다. 기한은 없지만 성적 입력이 시작되면 막는다.
+    // 수강신청과 같은 순서(강의 → 수강신청)로 잠그려고 강의 행부터 잠근다. 성적상태를 바꾸는 쪽도 이 행을 기다리므로
+    // 확인과 폐강 사이에 성적 입력이 끼어들지 못한다
     @Transactional
     public LectureResponse close(int lecNo) {
         lock(lecNo);
@@ -104,16 +106,11 @@ public class LectureAdminService {
         if (current.lecStat() == LecStat.CLOSED) {
             throw new BusinessException(ErrorCode.LECTURE_CLOSED);
         }
-        LocalDateTime now = LocalDateTime.now(clock);
-        boolean adjustOver = lectureAdminRepository
-                .findAdjustEnd(current.semNo())
-                .map(end -> !now.isBefore(end))
-                .orElse(false);
-        if (adjustOver) {
-            throw new BusinessException(ErrorCode.CLOSE_PERIOD_OVER);
+        if (lectureAdminRepository.gradingStarted(lecNo)) {
+            throw new BusinessException(ErrorCode.CLOSE_AFTER_GRADING);
         }
 
-        lectureAdminRepository.cancelEnrollments(lecNo, now);
+        lectureAdminRepository.cancelEnrollments(lecNo, LocalDateTime.now(clock));
         lectureAdminRepository.close(lecNo);
         lectureAdminRepository.deleteCarts(lecNo);
         return get(lecNo);
@@ -168,7 +165,19 @@ public class LectureAdminService {
         }
     }
 
-    /** 기존 강의의 강의시간·강의실은 수강신청 기간이 시작되기 전까지만 바꿀 수 있습니다. */
+    /** 강의실·담당 교수·정원은 정정 기간이 끝나기 전까지만 바꿀 수 있습니다. */
+    private void checkUpdateOpen(int semNo) {
+        LocalDateTime now = LocalDateTime.now(clock);
+        boolean over = lectureAdminRepository
+                .findAdjustEnd(semNo)
+                .map(end -> !now.isBefore(end))
+                .orElse(false);
+        if (over) {
+            throw new BusinessException(ErrorCode.UPDATE_PERIOD_OVER);
+        }
+    }
+
+    /** 강의시간·수업유형은 수강신청 기간이 시작되기 전까지만 바꿀 수 있습니다. 신청한 학생의 시간표가 겹치지 않게 하려는 것입니다. */
     private void checkTimeChangeOpen(int semNo) {
         LocalDateTime now = LocalDateTime.now(clock);
         boolean started = lectureAdminRepository
@@ -199,9 +208,19 @@ public class LectureAdminService {
         }
     }
 
-    private boolean sameSlots(List<TimeSlotResponse> current, List<LectureTimeSlot> requested) {
-        var before =
-                new HashSet<>(current.stream().map(TimeSlotResponse::toSlot).toList());
-        return before.size() == requested.size() && before.containsAll(requested);
+    /** 강의시간 칸이 바뀌었는지 봅니다. ignoreRoom 이면 강의실만 바뀐 건 바뀌지 않은 것으로 봅니다. */
+    private boolean changed(List<TimeSlotResponse> current, List<LectureTimeSlot> requested, boolean ignoreRoom) {
+        var before = new HashSet<>(current.stream()
+                .map(TimeSlotResponse::toSlot)
+                .map(slot -> ignoreRoom ? withoutRoom(slot) : slot)
+                .toList());
+        var after = new HashSet<>(requested.stream()
+                .map(slot -> ignoreRoom ? withoutRoom(slot) : slot)
+                .toList());
+        return !before.equals(after);
+    }
+
+    private static LectureTimeSlot withoutRoom(LectureTimeSlot slot) {
+        return new LectureTimeSlot(slot.dow(), slot.startTm(), slot.endTm(), slot.clsType(), null);
     }
 }
