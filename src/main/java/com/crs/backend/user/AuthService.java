@@ -8,8 +8,10 @@ import com.crs.backend.common.auth.Role;
 import com.crs.backend.user.dto.LoginRequest;
 import com.crs.backend.user.dto.LoginResponse;
 import com.crs.backend.user.dto.MyInfoResponse;
+import com.crs.backend.user.dto.PasswordChangeRequest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /** 로그인(USR-01). */
 @Service
@@ -30,7 +32,8 @@ public class AuthService {
         // 계정이 없을 때와 비밀번호가 틀릴 때 같은 오류로 처리
         UserAccount account = userAccountRepository
                 .findByUsrNo(request.usrNo())
-                .filter(found -> passwordEncoder.matches(request.password(), found.pwd()))
+                .filter(found -> !Passwords.tooLong(request.password())
+                        && passwordEncoder.matches(request.password(), found.pwd()))
                 .orElseThrow(() -> new BusinessException(ErrorCode.LOGIN_FAILED));
 
         // 비활성 계정 막기
@@ -48,6 +51,22 @@ public class AuthService {
                 .findByUsrNo(user.usrNo())
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHENTICATED));
         return toMyInfo(account);
+    }
+
+    // 본인 비밀번호 변경: 현재 비밀번호가 맞아야 바꾼다
+    @Transactional
+    public void changePassword(CurrentUser user, PasswordChangeRequest request) {
+        UserAccount account = userAccountRepository
+                .findByUsrNo(user.usrNo())
+                .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHENTICATED));
+        if (Passwords.tooLong(request.currentPassword())
+                || !passwordEncoder.matches(request.currentPassword(), account.pwd())) {
+            throw new BusinessException(ErrorCode.PASSWORD_MISMATCH);
+        }
+        if (Passwords.tooLong(request.newPassword())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "비밀번호가 너무 깁니다.");
+        }
+        userAccountRepository.updatePassword(account.usrNo(), passwordEncoder.encode(request.newPassword()));
     }
 
     // 학생일때 조교 여부 확인
