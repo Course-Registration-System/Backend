@@ -11,6 +11,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -77,6 +78,7 @@ public class LectureAdminService {
         checkUpdateOpen(current.semNo());
         List<LectureTimeSlot> slots = toSlots(request.timeSlots());
         checkSlots(slots);
+        checkRoomAssigned(current.semNo(), slots);
         checkProfessor(request.profNo());
 
         boolean slotsChanged = changed(current.timeSlots(), slots, false);
@@ -96,9 +98,9 @@ public class LectureAdminService {
         return get(lecNo);
     }
 
-    // ⑥ 폐강: 강의상태를 바꾸고, 신청을 모두 취소하고, 장바구니에서도 뺀다. 기한은 없지만 성적 입력이 시작되면 막는다.
-    // 수강신청과 같은 순서(강의 → 수강신청)로 잠그려고 강의 행부터 잠근다. 성적상태를 바꾸는 쪽도 이 행을 기다리므로
-    // 확인과 폐강 사이에 성적 입력이 끼어들지 못한다
+    // ⑥ 폐강: 강의상태를 바꾸고, 신청을 모두 취소하고, 장바구니에서도 뺀다.
+    // 정정 기간 안에만 해서, 신청이 취소된 학생이 정정 기간에 다른 강의를 신청할 수 있게 한다.
+    // 수강신청과 같은 순서(강의 → 수강신청)로 잠그려고 강의 행부터 잠근다
     @Transactional
     public LectureResponse close(int lecNo) {
         lock(lecNo);
@@ -106,11 +108,12 @@ public class LectureAdminService {
         if (current.lecStat() == LecStat.CLOSED) {
             throw new BusinessException(ErrorCode.LECTURE_CLOSED);
         }
-        if (lectureAdminRepository.gradingStarted(lecNo)) {
-            throw new BusinessException(ErrorCode.CLOSE_AFTER_GRADING);
+        LocalDateTime now = LocalDateTime.now(clock);
+        if (passed(lectureAdminRepository.findAdjustEnd(current.semNo()))) {
+            throw new BusinessException(ErrorCode.CLOSE_PERIOD_OVER);
         }
 
-        lectureAdminRepository.cancelEnrollments(lecNo, LocalDateTime.now(clock));
+        lectureAdminRepository.cancelEnrollments(lecNo, now);
         lectureAdminRepository.close(lecNo);
         lectureAdminRepository.deleteCarts(lecNo);
         return get(lecNo);
@@ -155,38 +158,38 @@ public class LectureAdminService {
 
     /** 새 강의는 장바구니 기간이 시작되기 전까지만 개설합니다(처리 시기). */
     private void checkOpenPeriod(int semNo) {
-        LocalDateTime now = LocalDateTime.now(clock);
-        boolean started = lectureAdminRepository
-                .findCartStart(semNo)
-                .map(start -> !now.isBefore(start))
-                .orElse(false);
-        if (started) {
+        if (passed(lectureAdminRepository.findCartStart(semNo))) {
             throw new BusinessException(ErrorCode.LECTURE_OPEN_CLOSED);
         }
     }
 
     /** 강의실·담당 교수·정원은 정정 기간이 끝나기 전까지만 바꿀 수 있습니다. */
     private void checkUpdateOpen(int semNo) {
-        LocalDateTime now = LocalDateTime.now(clock);
-        boolean over = lectureAdminRepository
-                .findAdjustEnd(semNo)
-                .map(end -> !now.isBefore(end))
-                .orElse(false);
-        if (over) {
+        if (passed(lectureAdminRepository.findAdjustEnd(semNo))) {
             throw new BusinessException(ErrorCode.UPDATE_PERIOD_OVER);
         }
     }
 
     /** 강의시간·수업유형은 수강신청 기간이 시작되기 전까지만 바꿀 수 있습니다. 신청한 학생의 시간표가 겹치지 않게 하려는 것입니다. */
     private void checkTimeChangeOpen(int semNo) {
-        LocalDateTime now = LocalDateTime.now(clock);
-        boolean started = lectureAdminRepository
-                .findEnrollStart(semNo)
-                .map(start -> !now.isBefore(start))
-                .orElse(false);
-        if (started) {
+        if (passed(lectureAdminRepository.findEnrollStart(semNo))) {
             throw new BusinessException(ErrorCode.TIME_CHANGE_CLOSED);
         }
+    }
+
+    /** 대면 수업은 정정 기간(개강 주)이 시작되기 전까지만 강의실을 미배정으로 둘 수 있습니다. */
+    private void checkRoomAssigned(int semNo, List<LectureTimeSlot> slots) {
+        boolean unassigned =
+                slots.stream().anyMatch(slot -> slot.clsType() == ClsType.OFFLINE && slot.roomCd() == null);
+        if (unassigned && passed(lectureAdminRepository.findAdjustStart(semNo))) {
+            throw new BusinessException(ErrorCode.ROOM_REQUIRED);
+        }
+    }
+
+    /** 일정 시각이 지났는지. 일정이 아직 없으면 지나지 않은 것으로 봅니다. */
+    private boolean passed(Optional<LocalDateTime> moment) {
+        LocalDateTime now = LocalDateTime.now(clock);
+        return moment.map(at -> !now.isBefore(at)).orElse(false);
     }
 
     // ③ 강의실이 지정된 칸은 강의실 중복을, 모든 칸은 교수 시간 중복을 본다

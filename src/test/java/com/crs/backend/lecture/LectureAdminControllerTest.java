@@ -148,7 +148,7 @@ class LectureAdminControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.code").value("LECTURE_CLOSED"));
     }
 
-    // 아래 세 테스트의 2026-2 는 정정 기간(2026-09-08 종료)이 끝난 학기다
+    // 아래 두 테스트의 2026-2 는 정정 기간(2026-09-08 종료)이 끝난 학기다
 
     @Test
     void 정정_기간이_끝나면_강의를_수정할_수_없다() throws Exception {
@@ -163,18 +163,28 @@ class LectureAdminControllerTest extends IntegrationTest {
     }
 
     @Test
-    void 정정_기간이_끝나도_성적_입력_전이면_폐강할_수_있다() throws Exception {
+    void 정정_기간이_끝난_학기의_강의는_폐강할_수_없다() throws Exception {
         mvc.perform(asAdmin(patch("/api/admin/lectures/" + Lecture.NOT_ENTERED + "/close")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.lecStat").value("CLOSED"));
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CLOSE_PERIOD_OVER"));
     }
 
     @Test
-    void 성적_입력이_시작된_강의는_폐강할_수_없다() throws Exception {
-        // 183번은 성적상태가 '입력중'이다
-        mvc.perform(asAdmin(patch("/api/admin/lectures/" + Lecture.DEMO_GRADE + "/close")))
+    void 정정_기간이_시작되면_대면_수업은_강의실을_비울_수_없다() throws Exception {
+        // 2026 겨울학기 정정 기간은 T0(2026-12-21 10:00)에 시작했다. 184번은 금 11:00~12:50 정보관 301호
+        String body = """
+                {"profNo": "100005", "cap": 30, "engLec": false, "relGrdExmp": false,
+                 "timeSlots": [{"dow": "FRI", "startTm": "11:00", "endTm": "12:50"%s}]}
+                """;
+        mvc.perform(asAdmin(put("/api/admin/lectures/184"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted("")))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("CLOSE_AFTER_GRADING"));
+                .andExpect(jsonPath("$.code").value("ROOM_REQUIRED"));
+        mvc.perform(asAdmin(put("/api/admin/lectures/184"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted(", \"roomCd\": \"21301\"")))
+                .andExpect(status().isOk());
     }
 
     @Test
