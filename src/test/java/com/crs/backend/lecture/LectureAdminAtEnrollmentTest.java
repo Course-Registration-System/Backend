@@ -2,6 +2,7 @@ package com.crs.backend.lecture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -26,7 +27,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 2027-1 수강신청일 T1(2027-02-11). 수강신청이 시작돼 강의시간은 잠겼고, 정정 기간 전이라 폐강은 됩니다. */
+/**
+ * 2027-1 수강신청일 T1(2027-02-11). 장바구니·수강신청이 시작돼 새 개설과 강의시간 변경은 막히고, 정정 기간 전이라 폐강은 됩니다.
+ */
 @AutoConfigureMockMvc
 @Transactional
 @TestPropertySource(properties = "crs.clock.fixed-at=" + SeedTime.T1)
@@ -58,6 +61,20 @@ class LectureAdminAtEnrollmentTest extends IntegrationTest {
     void setUp() {
         SeedTime.atT1(dataSource);
         admin = Bearer.of(jwtProvider, Account.ADMIN, Role.ADMIN);
+    }
+
+    @Test
+    void 장바구니_기간이_시작되면_새_강의를_개설할_수_없다() throws Exception {
+        mvc.perform(post("/api/admin/lectures")
+                        .header(HttpHeaders.AUTHORIZATION, admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"crsCd": "1010021", "semNo": 11, "profNo": "100002", "sectNo": 2, "cap": 30,
+                                 "engLec": false, "relGrdExmp": false,
+                                 "timeSlots": [{"dow": "SUN", "startTm": "08:00", "endTm": "09:00"}]}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("LECTURE_OPEN_CLOSED"));
     }
 
     @Test

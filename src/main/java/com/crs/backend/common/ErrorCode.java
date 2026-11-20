@@ -21,6 +21,7 @@ public enum ErrorCode {
     PROFESSOR_NOT_FOUND(HttpStatus.NOT_FOUND, "담당할 수 있는 교수가 아닙니다."),
     CLASSROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "강의실을 찾을 수 없습니다."),
     DUPLICATE_SECTION(HttpStatus.CONFLICT, "같은 학기·과목에 이미 있는 분반입니다."),
+    LECTURE_OPEN_CLOSED(HttpStatus.CONFLICT, "장바구니 기간이 시작돼 강의를 새로 개설할 수 없습니다."),
     ROOM_TIME_CONFLICT(HttpStatus.CONFLICT, "강의실 사용 시간이 다른 강의와 겹칩니다."),
     PROFESSOR_TIME_CONFLICT(HttpStatus.CONFLICT, "담당 교수의 다른 강의와 시간이 겹칩니다."),
     TIME_CHANGE_CLOSED(HttpStatus.CONFLICT, "수강신청 기간이 시작돼 강의시간·강의실을 바꿀 수 없습니다."),

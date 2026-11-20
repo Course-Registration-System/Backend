@@ -170,7 +170,26 @@ public class LectureAdminRepository {
                 .findFirst();
     }
 
+    // ---- 잠금
+
+    /**
+     * 강의 행을 잠급니다(트랜잭션이 끝날 때까지). 수강신청도 같은 행을 먼저 잠그므로, 정원 변경·폐강이 동시에 들어온 신청과 엇갈리지
+     * 않습니다. 강의가 없으면 false.
+     */
+    public boolean lockLecture(int lecNo) {
+        return !jdbc.queryForList("SELECT lec_no FROM lecture WHERE lec_no = ? FOR UPDATE", Integer.class, lecNo)
+                .isEmpty();
+    }
+
     // ---- 학사일정 (ACA-01 소관, 읽기만)
+
+    /** 장바구니 기간의 시작. 장바구니 일정이 없으면 수강신청 시작으로 대신합니다. */
+    public Optional<LocalDateTime> findCartStart(int semNo) {
+        return Optional.ofNullable(jdbc.queryForObject(
+                "SELECT MIN(start_dtm) FROM academic_schedule WHERE sem_no = ? AND schd_type IN ('CART', 'ENROLL')",
+                LocalDateTime.class,
+                semNo));
+    }
 
     /** 학년별 수강신청일 중 가장 이른 시작. 일정이 아직 없으면 비어 있습니다. */
     public Optional<LocalDateTime> findEnrollStart(int semNo) {

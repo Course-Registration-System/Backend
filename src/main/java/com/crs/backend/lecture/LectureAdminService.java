@@ -48,7 +48,7 @@ public class LectureAdminService {
             throw new BusinessException(ErrorCode.SEMESTER_NOT_FOUND);
         }
         checkProfessor(request.profNo());
-        checkTimeChangeOpen(request.semNo());
+        checkOpenPeriod(request.semNo());
         if (lectureAdminRepository.sectionExists(request.semNo(), request.crsCd(), request.sectNo())) {
             throw new BusinessException(ErrorCode.DUPLICATE_SECTION);
         }
@@ -66,9 +66,10 @@ public class LectureAdminService {
         return get(lecNo);
     }
 
-    // ⑤ 수정
+    // ⑤ 수정. 정원 비교가 동시에 들어온 신청과 엇갈리지 않게 강의 행부터 잠근다
     @Transactional
     public LectureResponse update(int lecNo, LectureUpdateRequest request) {
+        lock(lecNo);
         LectureResponse current = get(lecNo);
         if (current.lecStat() == LecStat.CLOSED) {
             throw new BusinessException(ErrorCode.LECTURE_CLOSED);
@@ -94,9 +95,11 @@ public class LectureAdminService {
         return get(lecNo);
     }
 
-    // ⑥ 폐강: 강의상태를 바꾸고, 신청을 모두 취소하고, 장바구니에서도 뺀다
+    // ⑥ 폐강: 강의상태를 바꾸고, 신청을 모두 취소하고, 장바구니에서도 뺀다.
+    // 수강신청과 같은 순서(강의 → 수강신청)로 잠그려고 강의 행부터 잠근다
     @Transactional
     public LectureResponse close(int lecNo) {
+        lock(lecNo);
         LectureResponse current = get(lecNo);
         if (current.lecStat() == LecStat.CLOSED) {
             throw new BusinessException(ErrorCode.LECTURE_CLOSED);
@@ -147,7 +150,25 @@ public class LectureAdminService {
         }
     }
 
-    /** 강의시간·강의실은 수강신청 기간이 시작되기 전까지만 정하거나 바꿀 수 있습니다. */
+    private void lock(int lecNo) {
+        if (!lectureAdminRepository.lockLecture(lecNo)) {
+            throw new BusinessException(ErrorCode.LECTURE_NOT_FOUND);
+        }
+    }
+
+    /** 새 강의는 장바구니 기간이 시작되기 전까지만 개설합니다(처리 시기). */
+    private void checkOpenPeriod(int semNo) {
+        LocalDateTime now = LocalDateTime.now(clock);
+        boolean started = lectureAdminRepository
+                .findCartStart(semNo)
+                .map(start -> !now.isBefore(start))
+                .orElse(false);
+        if (started) {
+            throw new BusinessException(ErrorCode.LECTURE_OPEN_CLOSED);
+        }
+    }
+
+    /** 기존 강의의 강의시간·강의실은 수강신청 기간이 시작되기 전까지만 바꿀 수 있습니다. */
     private void checkTimeChangeOpen(int semNo) {
         LocalDateTime now = LocalDateTime.now(clock);
         boolean started = lectureAdminRepository
