@@ -27,8 +27,9 @@ public enum ErrorCode {
     UPDATE_PERIOD_OVER(HttpStatus.CONFLICT, "정정 기간이 끝나 강의를 수정할 수 없습니다."),
     TIME_CHANGE_CLOSED(HttpStatus.CONFLICT, "수강신청 기간이 시작돼 강의시간·수업유형을 바꿀 수 없습니다."),
     CAPACITY_BELOW_ENROLLED(HttpStatus.CONFLICT, "정원을 현재 신청인원보다 작게 줄일 수 없습니다."),
+    ROOM_REQUIRED(HttpStatus.CONFLICT, "정정 기간이 시작돼 대면 수업은 강의실을 지정해야 합니다."),
     LECTURE_CLOSED(HttpStatus.CONFLICT, "폐강된 강의입니다."),
-    CLOSE_AFTER_GRADING(HttpStatus.CONFLICT, "성적 입력이 시작된 강의는 폐강할 수 없습니다."),
+    CLOSE_PERIOD_OVER(HttpStatus.CONFLICT, "정정 기간이 끝나 폐강할 수 없습니다."),
 
     NO_REGISTRATION_SEMESTER(HttpStatus.CONFLICT, "지금은 신청 대상 학기가 없습니다."),
     CART_CLOSED(HttpStatus.CONFLICT, "장바구니 기간이 아닙니다."),
