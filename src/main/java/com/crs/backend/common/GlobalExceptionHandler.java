@@ -4,6 +4,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -25,8 +26,12 @@ public class GlobalExceptionHandler {
         return problem(ErrorCode.INVALID_INPUT, detail);
     }
 
-    /** JSON 형식이 깨졌거나, 쿼리 값이 enum·숫자로 바뀌지 않을 때(예: ?role=TEACHER) */
-    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+    /** JSON 형식이 깨졌거나, 쿼리 값이 빠졌거나 enum·숫자로 바뀌지 않을 때(예: ?role=TEACHER) */
+    @ExceptionHandler({
+        HttpMessageNotReadableException.class,
+        MethodArgumentTypeMismatchException.class,
+        MissingServletRequestParameterException.class
+    })
     public ProblemDetail handleUnreadable(Exception e) {
         return problem(ErrorCode.INVALID_INPUT, ErrorCode.INVALID_INPUT.message());
     }
