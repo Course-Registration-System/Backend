@@ -1,8 +1,8 @@
 name: CI
 
 on:
+  # 다른 PR 위에 쌓인 PR(base 가 main 이 아닌 PR)도 빌드·테스트한다
   pull_request:
-    branches: [main]
   push:
     branches: [main]
 
