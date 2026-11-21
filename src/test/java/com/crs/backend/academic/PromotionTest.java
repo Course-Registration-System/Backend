@@ -155,8 +155,9 @@ class PromotionTest extends IntegrationTest {
         History returning = new History("29990001");
         returning.take(7, "3.0", "MAJOR_ELEC", "GRADE", "A0");
         returning.take(SUMMER, "3.0", "MAJOR_ELEC", "GRADE", "F");
-        // 마지막 정규학기가 P/F 과목뿐이면 평점이 없어 18 (그 전 학기가 4.3이어도)
+        // 3학기째 학생의 마지막 정규학기가 P/F 과목뿐이면 평점이 없어 18 (그 전 학기가 4.3이어도)
         History passFailOnly = new History("29990002");
+        passFailOnly.take(6, "3.0", "MAJOR_ELEC", "GRADE", "A0");
         passFailOnly.take(7, "3.0", "MAJOR_ELEC", "GRADE", "A0");
         passFailOnly.take(9, "0.5", "CHAPEL", "PASS_FAIL", "P");
 
@@ -164,6 +165,29 @@ class PromotionTest extends IntegrationTest {
 
         assertThat(returning.maxCredit()).isEqualTo(21);
         assertThat(passFailOnly.maxCredit()).isEqualTo(18);
+    }
+
+    @Test
+    void 이학년_일학기는_일학년_두_학기를_합친_학점_가중_평균으로_정한다() {
+        // 2026-1 A+ 3학점, 2026-2 B+ 1학점: 마지막 학기만 보면 3.5지만 1학년 평균은 (13.5 + 3.5) / 4 = 4.25 → 21
+        History risen = new History("29990001");
+        risen.take(7, "3.0", "MAJOR_ELEC", "GRADE", "A+");
+        risen.take(9, "1.0", "MAJOR_ELEC", "GRADE", "B+");
+        // 2026-1 C+ 3학점, 2026-2 A0 3학점: 마지막 학기만 보면 4.3이지만 1학년 평균은 3.4 → 18
+        History fallen = new History("29990002");
+        fallen.take(7, "3.0", "MAJOR_ELEC", "GRADE", "C+");
+        fallen.take(9, "3.0", "MAJOR_ELEC", "GRADE", "A0");
+        // 3학기째는 다시 마지막 학기만 본다: 2025-2 F, 2026-1 C+, 2026-2 A0 → 4.3 → 21
+        History third = new History("29990003");
+        third.take(6, "3.0", "MAJOR_ELEC", "GRADE", "F");
+        third.take(7, "3.0", "MAJOR_ELEC", "GRADE", "C+");
+        third.take(9, "3.0", "MAJOR_ELEC", "GRADE", "A0");
+
+        maxCreditService.calculate(Semester.Y2027_FIRST);
+
+        assertThat(risen.maxCredit()).isEqualTo(21);
+        assertThat(fallen.maxCredit()).isEqualTo(18);
+        assertThat(third.maxCredit()).isEqualTo(21);
     }
 
     /** 정규 8학기, 학기마다 4학점 A0 4과목(128학점) + 2학점 1과목 = 130학점, 채플 P 학기 n개. */

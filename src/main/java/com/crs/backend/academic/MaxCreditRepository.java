@@ -47,7 +47,8 @@ public class MaxCreditRepository {
              GROUP BY std_no
             """.formatted(HISTORY);
 
-    // 학생별 마지막으로 다닌 정규학기(D1)의 등급제 과목 학점 합과 학점×평점 합. 평점 = pts / crd
+    // 최대학점을 정할 평점의 등급제 과목 학점 합과 학점×평점 합. 평점 = pts / crd
+    // 마지막으로 다닌 정규학기(D1) 하나를 본다. 다닌 정규학기가 2개(2학년 1학기)면 1학년 두 학기를 합쳐 학점 가중 평균을 낸다
     private static final String LAST_REGULAR_GPA = """
             WITH reg AS (
                 SELECT e.std_no, %s AS sem_ord, c.crdt, c.eval_type, g.ltr_grd
@@ -60,14 +61,15 @@ public class MaxCreditRepository {
                    AND l.grd_stat = 'CONFIRMED'
                    AND s.sem_type IN ('FIRST', 'SECOND')
                    AND %s < :targetOrd
-            ), last_sem AS (
-                SELECT std_no, MAX(sem_ord) AS sem_ord FROM reg GROUP BY std_no
+            ), terms AS (
+                SELECT std_no, MAX(sem_ord) AS last_ord, COUNT(DISTINCT sem_ord) AS term_cnt FROM reg GROUP BY std_no
             )
             SELECT r.std_no,
                    SUM(CASE WHEN r.eval_type = 'GRADE' THEN r.crdt END) AS crd,
                    SUM(CASE WHEN r.eval_type = 'GRADE' THEN r.crdt * (%s) END) AS pts
               FROM reg r
-              JOIN last_sem ls ON ls.std_no = r.std_no AND ls.sem_ord = r.sem_ord
+              JOIN terms t ON t.std_no = r.std_no
+             WHERE t.term_cnt = 2 OR r.sem_ord = t.last_ord
              GROUP BY r.std_no
             """.formatted(SEM_ORD, SEM_ORD, GradePoint.sql("r.ltr_grd"));
 
@@ -131,7 +133,8 @@ public class MaxCreditRepository {
     }
 
     /**
-     * 정규학기 최대학점. 재학생 전원, 마지막으로 다닌 정규학기 평점이 4.0 이상이면 21, 아니면 18(성적·평점 없음 포함, D3). 평점은 나누지 않고
+     * 정규학기 최대학점. 재학생 전원, 마지막으로 다닌 정규학기 평점(2학년 1학기는 1학년 두 학기 평균)이 4.0 이상이면 21, 아니면 18(성적·평점
+     * 없음 포함, D3). 평점은 나누지 않고
      * 학점×평점 합 ≥ 4.0×학점 합으로 비교해 반올림 오차를 없앱니다(D4). 다시 실행하면 새 값으로 바꿉니다.
      */
     public void upsertRegular(int semNo, int targetOrd) {

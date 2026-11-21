@@ -92,6 +92,7 @@ class MaxCreditSeedTest extends IntegrationTest {
         assertThat(maxCredit(Student.GPA_JUST_UNDER_4)).isEqualTo(18);
         assertThat(maxCredit(Student.PASS_FAIL_ONLY)).isEqualTo(18);
         assertThat(maxCredit(Student.RETURNING)).isEqualTo(21);
+        assertThat(maxCredit(Student.DEMO)).isEqualTo(21);
         assertThat(maxCredit(Student.FRESHMAN)).isEqualTo(18);
         assertThat(maxCredit(Student.GRADUATING)).isNull();
         assertThat(maxCredit(Student.ON_LEAVE)).isNull();
