@@ -15,6 +15,7 @@ import com.crs.backend.support.SeedFixtures.Account;
 import com.crs.backend.support.SeedFixtures.Lecture;
 import com.crs.backend.support.SeedFixtures.Semester;
 import com.crs.backend.support.SeedFixtures.Student;
+import com.crs.backend.support.SeedLectures;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,12 +33,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class CartControllerTest extends IntegrationTest {
 
-    // 2027-1 채플(1030001-1). 0.5학점이지만 담은 학점에 넣지 않는다
-    private static final int CHAPEL = 211;
-
-    // 2026 겨울학기 강의
-    private static final int WINTER = 184;
-
     @Autowired
     MockMvc mvc;
 
@@ -50,9 +45,17 @@ class CartControllerTest extends IntegrationTest {
     @Autowired
     FakeSchedulePolicy schedulePolicy;
 
+    // 2027-1 채플. 0.5학점이지만 담은 학점에 넣지 않는다
+    int chapel;
+
+    // 2026 겨울학기 강의
+    int winter;
+
     @BeforeEach
     void setUp() {
         schedulePolicy.at(Semester.Y2027_FIRST, true);
+        chapel = SeedLectures.of(jdbc, "1030001", Semester.Y2027_FIRST, 1);
+        winter = SeedLectures.of(jdbc, "1030006", Semester.Y2026_WINTER, 1);
     }
 
     @AfterEach
@@ -69,13 +72,13 @@ class CartControllerTest extends IntegrationTest {
 
         add(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT).andExpect(status().isCreated());
         add(Student.GPA_JUST_UNDER_4, Lecture.ONE_SEAT_LEFT).andExpect(status().isCreated());
-        add(Student.GPA_EXACTLY_4, CHAPEL)
+        add(Student.GPA_EXACTLY_4, chapel)
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.semNo").value(Semester.Y2027_FIRST))
                 .andExpect(jsonPath("$.items[0].lecNo").value(Lecture.ONE_SEAT_LEFT))
                 .andExpect(jsonPath("$.items[0].cartCnt").value(2))
                 .andExpect(jsonPath("$.items[0].timeSlots").isNotEmpty())
-                .andExpect(jsonPath("$.items[1].lecNo").value(CHAPEL))
+                .andExpect(jsonPath("$.items[1].lecNo").value(chapel))
                 .andExpect(jsonPath("$.cartCredits").value(credit))
                 .andExpect(jsonPath("$.maxCredit").value(18));
     }
@@ -135,7 +138,7 @@ class CartControllerTest extends IntegrationTest {
     @Test
     void 계절학기에는_휴학생도_담을_수_있다() throws Exception {
         schedulePolicy.at(Semester.Y2026_WINTER, true);
-        add(Student.ON_LEAVE, WINTER).andExpect(status().isCreated());
+        add(Student.ON_LEAVE, winter).andExpect(status().isCreated());
     }
 
     @Test

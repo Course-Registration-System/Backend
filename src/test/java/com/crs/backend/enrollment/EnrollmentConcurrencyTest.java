@@ -11,6 +11,7 @@ import com.crs.backend.support.IntegrationTest;
 import com.crs.backend.support.SeedFixtures.Lecture;
 import com.crs.backend.support.SeedFixtures.Semester;
 import com.crs.backend.support.SeedFixtures.Student;
+import com.crs.backend.support.SeedLectures;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -27,13 +28,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 /**
  * 여러 요청이 동시에 들어올 때 잠금이 규칙을 지키는지 봅니다. 요청마다 자기 트랜잭션이 필요해서 @Transactional 을 쓰지 않고, 바꾼 데이터는
  * root 계정으로 되돌립니다.
+ *
+ * <p>쓰는 2027-1 강의: 기업가정신(월·수 10:30), 컴파일러와 심리학의이해 2분반(둘 다 화·목 09:00)
  */
 class EnrollmentConcurrencyTest extends IntegrationTest {
-
-    // 209번 기업가정신(월·수 10:30), 198번 컴파일러와 218번 심리학의이해 2분반(둘 다 화·목 09:00)
-    private static final int ENTREPRENEURSHIP = 209;
-    private static final List<Integer> LECTURES =
-            List.of(ENTREPRENEURSHIP, Lecture.ONE_SEAT_LEFT, Lecture.TWO_SECTIONS);
 
     @Autowired
     EnrollmentService enrollmentService;
@@ -43,14 +41,18 @@ class EnrollmentConcurrencyTest extends IntegrationTest {
 
     private final JdbcTemplate root = new JdbcTemplate(dataSourceAs("root"));
 
+    private int entrepreneurship;
+    private List<Integer> lectures;
     private List<Integer> originalCaps;
 
     @BeforeEach
     void setUp() {
         schedulePolicy.at(Semester.Y2027_FIRST, false);
         schedulePolicy.enrollOpen(true);
-        originalCaps = LECTURES.stream()
-                .map(lecNo -> root.queryForObject("SELECT cap FROM crs.lecture WHERE lec_no = ?", Integer.class, lecNo))
+        entrepreneurship = SeedLectures.of(root, "1020020", Semester.Y2027_FIRST, 1);
+        lectures = List.of(entrepreneurship, Lecture.ONE_SEAT_LEFT, Lecture.TWO_SECTIONS);
+        originalCaps = lectures.stream()
+                .map(lecNo -> root.queryForObject("SELECT cap FROM lecture WHERE lec_no = ?", Integer.class, lecNo))
                 .toList();
         assertThat(enrolledRows()).isZero();
     }
@@ -58,31 +60,28 @@ class EnrollmentConcurrencyTest extends IntegrationTest {
     @AfterEach
     void tearDown() {
         schedulePolicy.reset();
-        String in = "(" + ENTREPRENEURSHIP + ", " + Lecture.ONE_SEAT_LEFT + ", " + Lecture.TWO_SECTIONS + ")";
-        root.update("DELETE FROM crs.enrollment WHERE lec_no IN " + in);
-        for (int i = 0; i < LECTURES.size(); i++) {
+        for (int i = 0; i < lectures.size(); i++) {
+            root.update("DELETE FROM enrollment WHERE lec_no = ?", lectures.get(i));
             root.update(
-                    "UPDATE crs.lecture SET cap = ?, enrl_cnt = 0 WHERE lec_no = ?",
-                    originalCaps.get(i),
-                    LECTURES.get(i));
+                    "UPDATE lecture SET cap = ?, enrl_cnt = 0 WHERE lec_no = ?", originalCaps.get(i), lectures.get(i));
         }
     }
 
     @Test
     void 여러_학생이_동시에_신청해도_정원을_넘지_않는다() throws Exception {
-        root.update("UPDATE crs.lecture SET cap = 3 WHERE lec_no = ?", ENTREPRENEURSHIP);
+        root.update("UPDATE lecture SET cap = 3 WHERE lec_no = ?", entrepreneurship);
         List<String> students = root.queryForList(
-                "SELECT std_no FROM crs.student WHERE std_stat = 'ATTENDING' ORDER BY std_no LIMIT 10", String.class);
+                "SELECT std_no FROM student WHERE std_stat = 'ATTENDING' ORDER BY std_no LIMIT 10", String.class);
         assertThat(students).hasSize(10);
 
         List<ErrorCode> results = runAtOnce(students.stream()
-                .map(stdNo -> (Callable<ErrorCode>) () -> enroll(stdNo, ENTREPRENEURSHIP))
+                .map(stdNo -> (Callable<ErrorCode>) () -> enroll(stdNo, entrepreneurship))
                 .toList());
 
         assertThat(results).filteredOn(code -> code == null).hasSize(3);
         assertThat(results).filteredOn(code -> code != null).containsOnly(ErrorCode.LECTURE_FULL);
         assertThat(root.queryForObject(
-                        "SELECT enrl_cnt FROM crs.lecture WHERE lec_no = ?", Integer.class, ENTREPRENEURSHIP))
+                        "SELECT enrl_cnt FROM lecture WHERE lec_no = ?", Integer.class, entrepreneurship))
                 .isEqualTo(3);
         assertThat(enrolledRows()).isEqualTo(3);
     }
@@ -131,10 +130,10 @@ class EnrollmentConcurrencyTest extends IntegrationTest {
 
     private int enrolledRows() {
         return root.queryForObject(
-                "SELECT COUNT(*) FROM crs.enrollment WHERE enrl_stat = 'ENROLLED' AND lec_no IN (?, ?, ?)",
+                "SELECT COUNT(*) FROM enrollment WHERE enrl_stat = 'ENROLLED' AND lec_no IN (?, ?, ?)",
                 Integer.class,
-                ENTREPRENEURSHIP,
-                Lecture.ONE_SEAT_LEFT,
-                Lecture.TWO_SECTIONS);
+                lectures.get(0),
+                lectures.get(1),
+                lectures.get(2));
     }
 }
