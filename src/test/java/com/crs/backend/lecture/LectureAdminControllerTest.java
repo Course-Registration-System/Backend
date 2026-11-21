@@ -15,12 +15,14 @@ import com.crs.backend.support.IntegrationTest;
 import com.crs.backend.support.SeedFixtures.Account;
 import com.crs.backend.support.SeedFixtures.Lecture;
 import com.crs.backend.support.SeedFixtures.Semester;
+import com.crs.backend.support.SeedLectures;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -31,7 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class LectureAdminControllerTest extends IntegrationTest {
 
-    // 198번 컴파일러(1010021-1, 교수 100002, 정보관 301호 화·목 09:00~10:15)의 2분반을 새로 연다
+    // 컴파일러(ONE_SEAT_LEFT, 1010021-1, 교수 100002, 정보관 301호 화·목 09:00~10:15)의 2분반을 새로 연다
     private static final String NEW_SECTION = """
             {"crsCd": "1010021", "semNo": 11, "profNo": "100002", "sectNo": 2, "cap": 30,
              "engLec": false, "relGrdExmp": false,
@@ -43,6 +45,9 @@ class LectureAdminControllerTest extends IntegrationTest {
 
     @Autowired
     JwtProvider jwtProvider;
+
+    @Autowired
+    JdbcTemplate jdbc;
 
     String admin;
 
@@ -87,7 +92,7 @@ class LectureAdminControllerTest extends IntegrationTest {
 
     @Test
     void 강의실이나_교수_시간이_겹치면_막는다() throws Exception {
-        // 198번이 정보관 301호(21301) 화 09:00~10:15 를 쓰고, 교수 100002 가 담당한다
+        // 컴파일러가 정보관 301호(21301) 화 09:00~10:15 를 쓰고, 교수 100002 가 담당한다
         String tuesday = "{\"dow\": \"TUE\", \"startTm\": \"09:30\", \"endTm\": \"10:30\", \"roomCd\": \"%s\"}";
         create(NEW_SECTION
                         .replaceAll("\\{\"dow\".*}]", tuesday.formatted("21301") + "]")
@@ -127,7 +132,7 @@ class LectureAdminControllerTest extends IntegrationTest {
 
     @Test
     void 강의실_미배정_강의에_강의실을_배정한다() throws Exception {
-        // 225번 창업과혁신: 대면인데 강의실 미배정(월·수 13:30~14:45, 교수 100004)
+        // 창업과혁신(NO_ROOM): 대면인데 강의실 미배정(월·수 13:30~14:45, 교수 100004)
         mvc.perform(asAdmin(put("/api/admin/lectures/" + Lecture.NO_ROOM))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -171,17 +176,18 @@ class LectureAdminControllerTest extends IntegrationTest {
 
     @Test
     void 정정_기간이_시작되면_대면_수업은_강의실을_비울_수_없다() throws Exception {
-        // 2026 겨울학기 정정 기간은 T0(2026-12-21 10:00)에 시작했다. 184번은 금 11:00~12:50 정보관 301호
+        // 2026 겨울학기 정정 기간은 T0(2026-12-21 10:00)에 시작했다. 1030006-1 은 금 11:00~12:50 정보관 301호
+        int winter = SeedLectures.of(jdbc, "1030006", Semester.Y2026_WINTER, 1);
         String body = """
                 {"profNo": "100005", "cap": 30, "engLec": false, "relGrdExmp": false,
                  "timeSlots": [{"dow": "FRI", "startTm": "11:00", "endTm": "12:50"%s}]}
                 """;
-        mvc.perform(asAdmin(put("/api/admin/lectures/184"))
+        mvc.perform(asAdmin(put("/api/admin/lectures/" + winter))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body.formatted("")))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("ROOM_REQUIRED"));
-        mvc.perform(asAdmin(put("/api/admin/lectures/184"))
+        mvc.perform(asAdmin(put("/api/admin/lectures/" + winter))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body.formatted(", \"roomCd\": \"21301\"")))
                 .andExpect(status().isOk());
