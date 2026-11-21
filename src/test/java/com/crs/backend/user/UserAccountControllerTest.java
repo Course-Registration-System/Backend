@@ -123,6 +123,29 @@ class UserAccountControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 비밀번호를_초기화하면_새_비밀번호로만_로그인된다() throws Exception {
+        mvc.perform(asAdmin(patch("/api/admin/users/" + Student.DEMO + "/password"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"newPassword\": \"reset-pw!\"}"))
+                .andExpect(status().isNoContent());
+
+        login(Student.DEMO, "reset-pw!").andExpect(status().isOk());
+        login(Student.DEMO, PASSWORD).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void 관리자_계정_비밀번호와_빈_비밀번호는_초기화할_수_없다() throws Exception {
+        mvc.perform(asAdmin(patch("/api/admin/users/" + Student.DEMO + "/password"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"newPassword\": \"\"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(asAdmin(patch("/api/admin/users/" + Account.ADMIN + "/password"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"newPassword\": \"reset-pw!\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void 비활성화하면_로그인할_수_없다() throws Exception {
         mvc.perform(asAdmin(patch("/api/admin/users/" + Student.DEMO + "/deactivate")))
                 .andExpect(status().isOk())
