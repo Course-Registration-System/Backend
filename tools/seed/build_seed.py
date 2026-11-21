@@ -283,6 +283,9 @@ FORCED = {
 ONLY_FORCED = {("20250003", 9)}
 PIN_SEM = {("20240001", 9): "ALL_A-", ("20240002", 9): "JUST_UNDER_4", ("20250002", 6): "ALL_A0",
            ("20260001", 9): "ALL_A-"}   # 20260001: 시연 강의(데이터리터러시)까지 A-면 평점 4.0 → 2027-1 최대학점 21
+# 2학년 1학기 최대학점은 1학년 두 학기 평균으로 정해서(ACA-01) 1학년 첫 학기도 고정한다.
+# 나중에 넣은 고정이라 다른 데이터가 바뀌지 않게 점수를 뽑은 뒤 덮어쓴다(난수 흐름 유지)
+LATE_PIN = {("20260001", 7): "A-", ("20250002", 5): "A0"}
 # 계절 수강: {학기: {과목: (인원, 후보 학번 순서)}}. 이미 들은 과목이면 다음 후보로 넘어간다
 SEASONAL_ENROLL = {8: {"1030007": (2, ["20260001", "20240003", "20260002", "20250001"]),
                        "1010006": (1, ["20260003", "20260001"])},
@@ -340,11 +343,21 @@ def sem_gpa(std, sem):
     return sum(c * p for c, p in rows) / sum(c for c, _ in rows)
 
 
+def gpa_over(std, sems):
+    rows = [(COURSES[e["lec"]["cd"]]["crdt"], PT[e["grade"]["ltr"]]) for e in ENR
+            if e["std"] == std and e["lec"]["sem"] in sems and e["stat"] == "ENROLLED" and e["grade"]
+            and COURSES[e["lec"]["cd"]]["eval"] == "GRADE"]
+    if not rows:
+        return None
+    return sum(c * p for c, p in rows) / sum(c for c, _ in rows)
+
+
 def max_credit_regular(std, sem):
+    """마지막으로 다닌 정규학기 평점 4.0 이상이면 21. 2학년 1학기(다닌 정규학기 2개)는 1학년 두 학기 평균으로 본다."""
     att = attended_regular(std, sem)
     if not att:
         return 18
-    g = sem_gpa(std, att[-1])
+    g = gpa_over(std, att) if len(att) == 2 else sem_gpa(std, att[-1])
     return 21 if g is not None and g >= 4.0 else 18
 
 
@@ -538,6 +551,10 @@ for sem, y, t in sorted(SEMS, key=lambda x: order_key(x[0])):
                 mine = [x["lec"] for x in ENR if x["std"] == e["std"] and x["lec"]["sem"] == sem and x["stat"] == "ENROLLED"]
                 forced = forced or just_under_4(mine).get(lec["cd"])
             e["grade"] = score_grade(lec, ST[e["std"]]["ab"], forced, e["retake"])
+            late = LATE_PIN.get((e["std"], sem))
+            if late and forced is None and COURSES[lec["cd"]]["eval"] == "GRADE":
+                forced = late
+                e["grade"] = score_grade(lec, ST[e["std"]]["ab"], forced, e["retake"])
             e["protect"] = e.get("protect") or forced is not None
         relative_fix(lec, rows)
         lec["gstat"] = "CONFIRMED"
@@ -652,7 +669,8 @@ assert sem_gpa("20240001", CUR) == 4.0
 g2 = sem_gpa("20240002", CUR)
 assert 3.95 <= g2 < 4.0, g2
 assert MAXC[("20240001", TARGET)] == 21 and MAXC[("20240002", TARGET)] == 18
-assert MAXC[("20250002", TARGET)] == 21     # 복학생: 휴학 직전 2025-2 평점 4.3
+assert MAXC[("20250002", TARGET)] == 21     # 복학생: 2학년 1학기라 1학년(2025) 평점 4.3
+assert gpa_over("20250002", [5, 6]) == 4.3
 assert MAXC[("20250003", TARGET)] == 18     # 직전 학기 P/F만
 assert ("20230001", TARGET) not in MAXC and ("20230003", TARGET) not in MAXC
 assert MAXC[("20230003", 10)] == 3 and MAXC[("20260001", 10)] == 6
@@ -929,13 +947,13 @@ java += jclass("Account", "학생이 아닌 계정.", [
     ("DEMO_PROFESSOR", DEMO_PROF, "성적 입력 시연 강의의 교수"),
     ("PROFESSOR_INACTIVE", "100006", "퇴직 교수(INACTIVE). 로그인 차단")])
 java += jclass("Student", "학번.", [
-    ("DEMO", RICH, "시연 학생. 2026-2 시연 강의 점수만 빈칸, 나머지 A-. A-를 넣으면 평점 4.0 → 2027-1 최대학점 21"),
+    ("DEMO", RICH, "시연 학생. 2026-1 전부 A-, 2026-2 시연 강의 점수만 빈칸, 나머지 A-. A-를 넣으면 1학년 평점 4.0 → 2027-1 최대학점 21"),
     ("GPA_EXACTLY_4", "20240001", "2026-2 평점 4.0 → 최대학점 21"),
     ("GPA_JUST_UNDER_4", "20240002", "2026-2 평점 4.0 미만 → 최대학점 18. 신청 취소 이력"),
     ("PASS_FAIL_ONLY", "20250003", "2026-2 P/F 과목만 → 평점 없음 → 최대학점 18"),
     ("GRADUATING", "20230001", "s1 에서 졸업 처리(정규 8학기, 130학점 이상)"),
     ("ON_LEAVE", "20230003", "휴학생. 2027-1 최대학점 없음"),
-    ("RETURNING", "20250002", "T0 휴학 → s1 에서 복학. 휴학 직전 학기 평점 4.3 → 최대학점 21"),
+    ("RETURNING", "20250002", "T0 휴학 → s1 에서 복학. 2학년 1학기라 1학년(2025) 평점 4.3 → 최대학점 21"),
     ("FRESHMAN", "20270001", "2027 신입생. s1 에서 계정 생성"),
     ("RETAKE", "20240003", "재수강 이력(F → A- 상한). 2027-1 데이터베이스 재수강 신청"),
     ("PREREQ_NOT_MET", "20240004", "자료구조 D+ → 데이터베이스(최소 C0) 신청 불가(T2)"),
@@ -1019,7 +1037,7 @@ gd = ["# 시드 데이터 안내", "",
       row("성적 조회", "T1", "20230003", "휴학 중 2026 겨울 수강. 계절 성적은 정규학기 평점에서 빠지고 이수 내역에는 들어감"),
       row("학기 마감(진급·졸업·복학)", "T0 → s1", "20230001 / 20250002 / 2026 입학생", "졸업 / 복학 / 1→2학년"),
       row("최대학점 산정", "T0 → s1", f"{RICH} / 20240001 / 20240002", "21 / 21 / 18 (4.0 경계)"),
-      row("최대학점 산정", "T0 → s1", "20250002", "복학생: 휴학 직전 2025-2 평점 기준 21"),
+      row("최대학점 산정", "T0 → s1", "20250002", "복학생: 2학년 1학기라 1학년(2025) 두 학기 평점 4.3 기준 21"),
       row("최대학점 산정", "T0 → s1", "20250003", "직전 학기 평점 없음 → 18"),
       row("최대학점 산정", "T0 → s1", "20230001 / 20230003", "졸업생·휴학생은 2027-1 정규학기 최대학점 없음"),
       row("강의 검색(REG-01)", "T1", lec_label(FULL), "잔여 0"),
