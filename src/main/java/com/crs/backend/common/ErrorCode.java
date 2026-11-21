@@ -25,6 +25,7 @@ public enum ErrorCode {
     SCHEDULE_OVERLAP(HttpStatus.CONFLICT, "같은 일정유형·대상학년의 기간과 겹칩니다."),
     SCHEDULE_ORDER(HttpStatus.CONFLICT, "일정은 장바구니 → 수강신청 → 정정 → 성적입력 순서여야 합니다."),
     SCHEDULE_STARTED(HttpStatus.CONFLICT, "이미 시작된 일정은 삭제할 수 없습니다."),
+    GRADES_NOT_CONFIRMED(HttpStatus.CONFLICT, "직전 정규학기에 성적이 확정되지 않은 강의가 있습니다."),
     PROFESSOR_NOT_FOUND(HttpStatus.NOT_FOUND, "담당할 수 있는 교수가 아닙니다."),
     CLASSROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "강의실을 찾을 수 없습니다."),
     DUPLICATE_SECTION(HttpStatus.CONFLICT, "같은 학기·과목에 이미 있는 분반입니다."),
