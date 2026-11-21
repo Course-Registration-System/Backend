@@ -37,7 +37,17 @@ public enum ErrorCode {
     STUDENT_STATUS_NOT_ALLOWED(HttpStatus.FORBIDDEN, "이번 학기에 신청할 수 없는 학적상태입니다."),
     OTHER_SEMESTER_LECTURE(HttpStatus.CONFLICT, "신청 대상 학기의 강의가 아닙니다."),
     DUPLICATE_CART(HttpStatus.CONFLICT, "이미 장바구니에 담은 강의입니다."),
-    CART_NOT_FOUND(HttpStatus.NOT_FOUND, "장바구니에 없는 강의입니다.");
+    CART_NOT_FOUND(HttpStatus.NOT_FOUND, "장바구니에 없는 강의입니다."),
+
+    ENROLL_CLOSED(HttpStatus.CONFLICT, "수강신청 기간이 아닙니다."),
+    ALREADY_ENROLLED_COURSE(HttpStatus.CONFLICT, "같은 과목을 이미 신청했습니다."),
+    RETAKE_NOT_ALLOWED(HttpStatus.CONFLICT, "재수강할 수 없는 과목입니다. 이전 성적이 C+ 이하(P/F 과목은 F)여야 합니다."),
+    RETAKE_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "재수강은 10과목까지 할 수 있습니다."),
+    LECTURE_FULL(HttpStatus.CONFLICT, "정원이 찼습니다."),
+    TIME_CONFLICT(HttpStatus.CONFLICT, "이미 신청한 강의와 시간이 겹칩니다."),
+    CREDIT_EXCEEDED(HttpStatus.CONFLICT, "최대학점을 넘습니다."),
+    PREREQUISITE_NOT_MET(HttpStatus.CONFLICT, "선수과목을 이수하지 않았습니다."),
+    ENROLLMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "신청한 강의가 아닙니다.");
 
     private final HttpStatus status;
     private final String message;
