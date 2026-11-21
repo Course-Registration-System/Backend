@@ -2,6 +2,7 @@ package com.crs.backend.lecture;
 
 import com.crs.backend.common.BusinessException;
 import com.crs.backend.common.ErrorCode;
+import com.crs.backend.enrollment.EnrollmentService;
 import com.crs.backend.lecture.dto.LectureCreateRequest;
 import com.crs.backend.lecture.dto.LectureResponse;
 import com.crs.backend.lecture.dto.LectureUpdateRequest;
@@ -20,10 +21,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class LectureAdminService {
 
     private final LectureAdminRepository lectureAdminRepository;
+    private final EnrollmentService enrollmentService;
     private final Clock clock;
 
-    public LectureAdminService(LectureAdminRepository lectureAdminRepository, Clock clock) {
+    public LectureAdminService(
+            LectureAdminRepository lectureAdminRepository, EnrollmentService enrollmentService, Clock clock) {
         this.lectureAdminRepository = lectureAdminRepository;
+        this.enrollmentService = enrollmentService;
         this.clock = clock;
     }
 
@@ -113,9 +117,8 @@ public class LectureAdminService {
             throw new BusinessException(ErrorCode.CLOSE_PERIOD_OVER);
         }
 
-        lectureAdminRepository.cancelEnrollments(lecNo, now);
+        enrollmentService.clearClosedLecture(lecNo, now);
         lectureAdminRepository.close(lecNo);
-        lectureAdminRepository.deleteCarts(lecNo);
         return get(lecNo);
     }
 

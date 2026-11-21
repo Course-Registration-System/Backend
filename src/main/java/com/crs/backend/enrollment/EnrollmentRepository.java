@@ -230,6 +230,14 @@ public class EnrollmentRepository {
                 """, now, procType.name(), stdNo, lecNo);
     }
 
+    /** 폐강: 강의의 신청 중인 건을 모두 관리자 처리로 취소합니다. */
+    public void cancelAll(int lecNo, LocalDateTime now) {
+        jdbc.update("""
+                UPDATE enrollment SET enrl_stat = 'CANCELLED', cncl_dtm = ?, proc_type = 'ADMIN'
+                 WHERE lec_no = ? AND enrl_stat = 'ENROLLED'
+                """, now, lecNo);
+    }
+
     public void addEnrlCnt(int lecNo, int delta) {
         jdbc.update("UPDATE lecture SET enrl_cnt = enrl_cnt + ? WHERE lec_no = ?", delta, lecNo);
     }

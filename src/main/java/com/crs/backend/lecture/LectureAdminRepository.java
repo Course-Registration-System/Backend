@@ -21,7 +21,7 @@ import org.springframework.stereotype.Repository;
 /**
  * 강의 개설 관리(ACA-03)의 SQL. 과목·학기·교수·강의실·학사일정은 다른 업무의 테이블이라 읽기만 합니다.
  *
- * <p>폐강할 때 함께 정리하는 수강신청·장바구니도 같은 모듈(B)의 테이블이라 여기서 씁니다.
+ * <p>폐강할 때 함께 정리하는 수강신청·장바구니는 EnrollmentService 가 씁니다.
  */
 @Repository
 public class LectureAdminRepository {
@@ -262,20 +262,8 @@ public class LectureAdminRepository {
 
     // ---- 폐강
 
-    /** 신청 중인 수강신청을 모두 관리자 처리로 취소합니다. 취소한 건수를 돌려줍니다. */
-    public int cancelEnrollments(int lecNo, LocalDateTime now) {
-        return jdbc.update("""
-                UPDATE enrollment SET enrl_stat = 'CANCELLED', cncl_dtm = ?, proc_type = 'ADMIN'
-                 WHERE lec_no = ? AND enrl_stat = 'ENROLLED'
-                """, now, lecNo);
-    }
-
     public void close(int lecNo) {
         jdbc.update("UPDATE lecture SET lec_stat = 'CLOSED', enrl_cnt = 0 WHERE lec_no = ?", lecNo);
-    }
-
-    public void deleteCarts(int lecNo) {
-        jdbc.update("DELETE FROM course_cart WHERE lec_no = ?", lecNo);
     }
 
     private static String yn(boolean value) {

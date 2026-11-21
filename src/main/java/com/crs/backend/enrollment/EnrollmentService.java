@@ -37,16 +37,19 @@ public class EnrollmentService {
     private static final int MAX_RETAKE_COURSES = 10;
 
     private final EnrollmentRepository enrollmentRepository;
+    private final CartRepository cartRepository;
     private final SchedulePolicy schedulePolicy;
     private final GradeQuery gradeQuery;
     private final Clock clock;
 
     public EnrollmentService(
             EnrollmentRepository enrollmentRepository,
+            CartRepository cartRepository,
             SchedulePolicy schedulePolicy,
             GradeQuery gradeQuery,
             Clock clock) {
         this.enrollmentRepository = enrollmentRepository;
+        this.cartRepository = cartRepository;
         this.schedulePolicy = schedulePolicy;
         this.gradeQuery = gradeQuery;
         this.clock = clock;
@@ -120,6 +123,17 @@ public class EnrollmentService {
         LectureInfo lecture = lockLecture(lecNo);
         checkAdminPeriod(lecture.semNo());
         unregister(stdNo, lecNo, ProcType.ADMIN);
+    }
+
+    // ---- 폐강(ACA-03)
+
+    /**
+     * 폐강한 강의의 신청을 모두 관리자 처리로 취소하고 장바구니에서도 뺍니다. 강의 개설 관리가 강의 행을 잠근 트랜잭션 안에서 부릅니다.
+     */
+    @Transactional
+    public void clearClosedLecture(int lecNo, LocalDateTime now) {
+        enrollmentRepository.cancelAll(lecNo, now);
+        cartRepository.deleteByLecture(lecNo);
     }
 
     // ---- 공통 검사와 저장
