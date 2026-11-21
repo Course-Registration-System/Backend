@@ -49,12 +49,14 @@ public class EnrollmentService {
         return enrollmentRepository.findEnrolled(requireStudent(user), registrationSemester());
     }
 
-    // 신청. 학생 → 강의 순으로 잠근 뒤 검사한다
+    // 신청. 학생 → 강의 순으로 잠근 뒤 검사한다.
+    // 학생 잠금이 트랜잭션의 첫 읽기여야 한다. MySQL(REPEATABLE READ)은 첫 일반 읽기 시점의 스냅숏을 끝까지 쓰므로,
+    // 잠금 전에 다른 것을 읽으면 같은 학생의 다른 신청이 방금 넣은 기록을 못 보고 시간·학점 검사가 통과될 수 있다
     @Transactional
     public EnrollmentResponse enroll(CurrentUser user, int lecNo) {
         String stdNo = requireStudent(user);
-        int semNo = registrationSemester();
         StudentState student = lockStudent(stdNo);
+        int semNo = registrationSemester();
         checkEnrollOpen(semNo, student);
         StudentStatusRule.check(student.stdStat(), enrollmentRepository.isSeasonal(semNo));
 
@@ -102,8 +104,8 @@ public class EnrollmentService {
     @Transactional
     public void cancel(CurrentUser user, int lecNo) {
         String stdNo = requireStudent(user);
-        int semNo = registrationSemester();
         StudentState student = lockStudent(stdNo);
+        int semNo = registrationSemester();
         checkEnrollOpen(semNo, student);
         LectureInfo lecture = enrollmentRepository
                 .lockLecture(lecNo)
@@ -118,6 +120,10 @@ public class EnrollmentService {
      * 이미 확정 성적이 있는 과목이면 재수강입니다. 가장 최근 확정 성적이 C+ 이하(P/F 과목은 F)여야 하고, 재수강 과목은 10과목까지입니다.
      */
     private boolean checkRetake(String stdNo, LectureInfo lecture) {
+        // 채플은 학기마다 다시 듣는 과목이라 재수강이 아니다(재수강 표시·10과목 집계 제외)
+        if (lecture.chapel()) {
+            return false;
+        }
         Optional<String> previous = gradeQuery.latestConfirmedGrade(stdNo, lecture.crsCd());
         if (previous.isEmpty()) {
             return false;
