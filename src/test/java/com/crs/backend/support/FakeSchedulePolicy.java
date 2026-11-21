@@ -19,6 +19,8 @@ public class FakeSchedulePolicy implements SchedulePolicy {
     private boolean cartOpen;
     private boolean enrollOpen;
     private int maxCredit;
+    private LocalDateTime enrollStart;
+    private LocalDateTime adjustEnd;
 
     public FakeSchedulePolicy() {
         reset();
@@ -29,6 +31,14 @@ public class FakeSchedulePolicy implements SchedulePolicy {
         cartOpen = false;
         enrollOpen = false;
         maxCredit = 18;
+        enrollStart = null;
+        adjustEnd = null;
+    }
+
+    /** 첫 수강신청일과 정정 종료를 정합니다(모든 학기 공통). 관리자 수강 추가·취소 기간에 씁니다. */
+    public void enrollPeriod(LocalDateTime enrollStart, LocalDateTime adjustEnd) {
+        this.enrollStart = enrollStart;
+        this.adjustEnd = adjustEnd;
     }
 
     /** 신청 대상 학기와 장바구니 기간 여부를 정합니다. */
@@ -73,7 +83,7 @@ public class FakeSchedulePolicy implements SchedulePolicy {
 
     @Override
     public Optional<LocalDateTime> enrollStart(int semNo) {
-        return Optional.empty();
+        return Optional.ofNullable(enrollStart);
     }
 
     @Override
@@ -83,6 +93,6 @@ public class FakeSchedulePolicy implements SchedulePolicy {
 
     @Override
     public Optional<LocalDateTime> adjustEnd(int semNo) {
-        return Optional.empty();
+        return Optional.ofNullable(adjustEnd);
     }
 }
