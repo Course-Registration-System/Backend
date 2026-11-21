@@ -74,7 +74,10 @@ public class CourseRepository {
                 .findFirst();
     }
 
-    /** 과목 행을 잠그고 읽습니다. 같은 과목을 동시에 고치는 요청을 한 줄로 세울 때 씁니다. */
+    /**
+     * 과목 행을 잠그고 읽습니다. 강의를 개설(INSERT INTO lecture)할 때 외래키 검사가 이 행에 공유 잠금을 걸기 때문에, 잠근 동안에는 이 과목으로
+     * 강의가 새로 개설되지 않습니다.
+     */
     public Optional<Course> findForUpdate(String crsCd) {
         return jdbc
                 .query(
@@ -110,6 +113,14 @@ public class CourseRepository {
                 Boolean.class));
     }
 
+    /** 이 과목으로 개설된 강의가 있는지. 강의상태(폐강 포함)·학기와 관계없이 봅니다. lecture 는 강의 개설 모듈 소관이라 읽기만 합니다. */
+    public boolean hasLecture(String crsCd) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM lecture WHERE crs_cd = :crsCd)",
+                new MapSqlParameterSource("crsCd", crsCd),
+                Boolean.class));
+    }
+
     public void insert(Course course) {
         jdbc.update("""
                 INSERT INTO course (crs_cd, dept_no, crs_nm, crdt, cmpl_type, eval_type, rcmd_yr_lvl)
@@ -141,10 +152,14 @@ public class CourseRepository {
                 """, new MapSqlParameterSource("crsCds", crsCds), PREREQUISITE_ROW);
     }
 
-    /** 모든 선수과목 관계. 순환 검사에 씁니다. */
-    public List<PrerequisiteCourse> findAllPrerequisites() {
+    /**
+     * 모든 선수과목 관계를 잠그고 최신 값으로 읽습니다(잠금 읽기라 트랜잭션 스냅샷이 아닌 커밋된 최신 행을 읽음). 다른 요청이 같은 메서드를 부르면 이
+     * 트랜잭션이 끝날 때까지 기다리므로, 선수과목 변경이 한 번에 하나씩 처리됩니다. 테이블이 완전히 비어 있으면 잠글 행이 없어, 동시에 처음 넣는 두
+     * 요청 중 하나는 교착 상태 오류로 실패합니다(잘못 저장되지는 않음).
+     */
+    public List<PrerequisiteCourse> lockAllPrerequisites() {
         return jdbc.query(
-                "SELECT crs_cd, prereq_crs_cd, min_req_grd FROM prerequisite_course",
+                "SELECT crs_cd, prereq_crs_cd, min_req_grd FROM prerequisite_course FOR UPDATE",
                 (rs, rowNum) -> new PrerequisiteCourse(
                         rs.getString("crs_cd"), rs.getString("prereq_crs_cd"), rs.getString("min_req_grd")));
     }

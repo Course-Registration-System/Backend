@@ -21,7 +21,8 @@ public enum ErrorCode {
     DUPLICATE_COURSE_CODE(HttpStatus.CONFLICT, "이미 등록된 과목코드입니다."),
     INVALID_CHAPEL_COURSE(HttpStatus.CONFLICT, "채플은 0.5학점, P/F 과목이어야 합니다."),
     PREREQUISITE_SELF(HttpStatus.CONFLICT, "자기 자신을 선수과목으로 지정할 수 없습니다."),
-    PREREQUISITE_CYCLE(HttpStatus.CONFLICT, "선수과목이 순환합니다.");
+    PREREQUISITE_CYCLE(HttpStatus.CONFLICT, "선수과목이 순환합니다."),
+    COURSE_IN_USE(HttpStatus.CONFLICT, "개설된 강의가 있는 과목은 과목명과 권장학년만 바꿀 수 있습니다.");
 
     private final HttpStatus status;
     private final String message;

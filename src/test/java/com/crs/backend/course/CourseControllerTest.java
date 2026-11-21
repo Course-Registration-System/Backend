@@ -233,26 +233,69 @@ class CourseControllerTest extends IntegrationTest {
     // ── 수정 ──
 
     @Test
-    void 과목_기본_정보를_수정한다() throws Exception {
+    void 개설된_과목도_과목명과_권장학년은_바꿀_수_있다() throws Exception {
+        // 데이터베이스는 지난 학기들에 개설된 과목
         perform(put("/api/admin/courses/" + DATABASE), """
-                        {"crsNm": "데이터베이스시스템", "deptNo": 102, "crdt": 3, "cmplType": "MAJOR_ELEC",
+                        {"crsNm": "데이터베이스시스템", "deptNo": 101, "crdt": 3, "cmplType": "MAJOR_ELEC",
                          "evalType": "GRADE", "rcmdYrLvl": 2}
                         """)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.crsCd").value(DATABASE))
                 .andExpect(jsonPath("$.crsNm").value("데이터베이스시스템"))
-                .andExpect(jsonPath("$.deptNo").value(102))
                 .andExpect(jsonPath("$.rcmdYrLvl").value(2))
                 .andExpect(jsonPath("$.prerequisites[0].prereqCrsCd").value(DATA_STRUCTURE));
     }
 
     @Test
-    void 개설된_과목도_학점_이수구분_평가방식을_바꿀_수_있다() throws Exception {
-        // 데이터베이스는 지난 학기들에 개설된 과목. 변경을 막지 않는다(관리자 판단)
-        perform(put("/api/admin/courses/" + DATABASE), updateBody("4", "MAJOR_REQ", "PASS_FAIL"))
+    void 개설된_과목의_학과_학점_이수구분_평가방식을_바꾸면_409() throws Exception {
+        String[] bodies = {
+            """
+            {"crsNm": "새이름", "deptNo": 102, "crdt": 3, "cmplType": "MAJOR_ELEC", "evalType": "GRADE"}
+            """,
+            updateBody("4", "MAJOR_ELEC", "GRADE"),
+            updateBody("3", "MAJOR_REQ", "GRADE"),
+            updateBody("3", "MAJOR_ELEC", "PASS_FAIL")
+        };
+        for (String body : bodies) {
+            perform(put("/api/admin/courses/" + DATABASE), body)
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("COURSE_IN_USE"));
+        }
+    }
+
+    @Test
+    void 수정할_때_평가방식을_빼면_400() throws Exception {
+        // 빼고 보내면 등급제로 덮어써지던 문제를 막기 위해 수정에서는 필수. 채플(P/F)로 확인
+        perform(put("/api/admin/courses/" + CHAPEL), """
+                        {"crsNm": "채플", "deptNo": 103, "crdt": 0.5, "cmplType": "CHAPEL"}
+                        """)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.startsWith("evalType:")));
+    }
+
+    @Test
+    void 수정할_때_권장학년을_빼면_권장학년이_지워진다() throws Exception {
+        // 권장학년 없음도 정상 값이라 필수가 아니다. 바꾸지 않으려면 현재 값을 채워 보내야 한다
+        perform(put("/api/admin/courses/" + DATABASE), """
+                        {"crsNm": "데이터베이스", "deptNo": 101, "crdt": 3, "cmplType": "MAJOR_ELEC", "evalType": "GRADE"}
+                        """)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.crdt").value(4.0))
-                .andExpect(jsonPath("$.cmplType").value("MAJOR_REQ"))
+                .andExpect(jsonPath("$.rcmdYrLvl").isEmpty());
+    }
+
+    @Test
+    void 개설된_강의가_없는_과목은_모두_바꿀_수_있다() throws Exception {
+        perform(post("/api/admin/courses"), newCourse(NEW_CODE, "3", "MAJOR_ELEC", null))
+                .andExpect(status().isCreated());
+
+        perform(put("/api/admin/courses/" + NEW_CODE), """
+                        {"crsNm": "새이름", "deptNo": 102, "crdt": 2, "cmplType": "GEN_ELEC", "evalType": "PASS_FAIL"}
+                        """)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deptNo").value(102))
+                .andExpect(jsonPath("$.crdt").value(2.0))
+                .andExpect(jsonPath("$.cmplType").value("GEN_ELEC"))
                 .andExpect(jsonPath("$.evalType").value("PASS_FAIL"));
     }
 

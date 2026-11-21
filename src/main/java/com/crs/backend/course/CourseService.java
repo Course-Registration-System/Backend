@@ -24,7 +24,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 과목 관리(ACA-02). 규칙은 docs/api/course.md 와 docs/업무기술서-변경내역.md 를 따릅니다. */
+/** 과목 관리(ACA-02). 과목 등록·수정과 선수과목 지정. 과목은 삭제하지 않습니다. */
 @Service
 public class CourseService {
 
@@ -87,17 +87,27 @@ public class CourseService {
     }
 
     /**
-     * 학점·이수구분·평가방식도 제한 없이 바꿉니다. 평점·최대학점·상대평가는 조회 시점의 과목 값으로 계산하므로, 바꾸면 지난 학기 결과에도 반영됩니다.
-     * 언제 바꿀지는 관리자가 판단합니다.
+     * 개설된 강의가 하나라도 있는 과목(폐강 포함)은 과목명·권장학년만 바꿀 수 있습니다. 학점·이수구분·평가방식은 평점·최대학점·선수과목·상대평가
+     * 판단이 조회 시점의 과목 값으로 계산하므로, 바꾸면 지난 학기 결과와 진행 중인 학기의 신청·성적이 달라집니다. 학과도 같이 고정합니다.
      */
     @Transactional
     public CourseResponse update(String crsCd, CourseUpdateRequest request) {
-        if (!courseRepository.exists(crsCd)) {
-            throw new BusinessException(ErrorCode.COURSE_NOT_FOUND);
-        }
+        // 과목 행을 잠가, 확인하는 동안 이 과목으로 강의가 새로 개설되지 않게 한다(강의 INSERT 의 외래키 검사가 이 행에 공유 잠금을 건다)
+        Course current = courseRepository
+                .findForUpdate(crsCd)
+                .orElseThrow(() -> new BusinessException(ErrorCode.COURSE_NOT_FOUND));
 
-        EvalType evalType = evalTypeOrDefault(request.evalType(), request.cmplType());
+        // 수정은 evalType 이 필수라 기본값을 채우지 않는다
+        EvalType evalType = request.evalType();
         validateCourse(request.crdt(), request.cmplType(), evalType, request.deptNo());
+
+        boolean fixedValueChanged = current.deptNo() != request.deptNo()
+                || current.crdt().compareTo(request.crdt()) != 0
+                || current.cmplType() != request.cmplType()
+                || current.evalType() != evalType;
+        if (fixedValueChanged && courseRepository.hasLecture(crsCd)) {
+            throw new BusinessException(ErrorCode.COURSE_IN_USE);
+        }
 
         courseRepository.update(new Course(
                 crsCd,
@@ -112,11 +122,15 @@ public class CourseService {
 
     @Transactional
     public CourseResponse replacePrerequisites(String crsCd, List<PrerequisiteRequest> requests) {
-        // 과목 행을 잠가, 같은 과목의 선수과목을 동시에 바꾸는 요청이 지우기·넣기 사이에 섞이지 않게 한다
-        courseRepository.findForUpdate(crsCd).orElseThrow(() -> new BusinessException(ErrorCode.COURSE_NOT_FOUND));
+        // 선수과목 변경은 한 번에 하나씩 처리한다. 관계 전체를 잠그고 최신 값으로 읽어야, 동시에 들어온 A→B 와 B→A(또는 더 긴 순환을
+        // 이루는 두 변경)가 서로를 못 본 채 둘 다 순환 검사를 통과하는 일이 없다. 다른 조회보다 먼저 잠가야 최신 값을 읽는다
+        List<PrerequisiteCourse> allPrerequisites = courseRepository.lockAllPrerequisites();
 
+        if (!courseRepository.exists(crsCd)) {
+            throw new BusinessException(ErrorCode.COURSE_NOT_FOUND);
+        }
         List<PrerequisiteCourse> prerequisites = toPrerequisites(crsCd, requests);
-        checkNoCycle(crsCd, prerequisites);
+        checkNoCycle(crsCd, prerequisites, allPrerequisites);
 
         courseRepository.deletePrerequisites(crsCd);
         courseRepository.insertPrerequisites(prerequisites);
@@ -136,7 +150,7 @@ public class CourseService {
         }
     }
 
-    // 평가방식을 정하지 않으면 등급제, 채플이면 P/F(업무기술서 변경내역 3)
+    // 평가방식을 정하지 않으면 등급제. 채플은 P/F 로만 평가하므로 채플이면 P/F
     private static EvalType evalTypeOrDefault(EvalType evalType, CmplType cmplType) {
         if (evalType != null) {
             return evalType;
@@ -174,13 +188,15 @@ public class CourseService {
     }
 
     /**
-     * 새 선수과목 목록으로 바꾼 뒤 순환이 생기는지 검사합니다(업무기술서 변경내역 2). 새 선수과목 P 에서 선수과목을 따라가 crsCd 에 닿으면 crsCd → P →
-     * … → crsCd 순환입니다.
+     * 새 선수과목 목록으로 바꾼 뒤 순환이 생기는지 검사합니다. 업무기술서는 두 과목이 서로를 선수과목으로 갖는 것만 금지하지만, 순환에 든 과목은 어느
+     * 것도 먼저 이수할 수 없으므로 길이와 관계없이 막습니다. 새 선수과목 P 에서 선수과목을 따라가 crsCd 에 닿으면 crsCd → P → … → crsCd
+     * 순환입니다.
      */
-    private void checkNoCycle(String crsCd, List<PrerequisiteCourse> prerequisites) {
+    private void checkNoCycle(
+            String crsCd, List<PrerequisiteCourse> prerequisites, List<PrerequisiteCourse> allPrerequisites) {
         // 과목 → 그 과목의 선수과목들. crsCd 의 기존 선수과목은 바뀔 것이므로 뺀다
         Map<String, List<String>> graph = new HashMap<>();
-        for (PrerequisiteCourse edge : courseRepository.findAllPrerequisites()) {
+        for (PrerequisiteCourse edge : allPrerequisites) {
             if (!edge.crsCd().equals(crsCd)) {
                 graph.computeIfAbsent(edge.crsCd(), key -> new ArrayList<>()).add(edge.prereqCrsCd());
             }
