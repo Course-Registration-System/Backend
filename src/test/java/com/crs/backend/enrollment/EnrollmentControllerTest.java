@@ -16,6 +16,7 @@ import com.crs.backend.support.IntegrationTest;
 import com.crs.backend.support.SeedFixtures.Lecture;
 import com.crs.backend.support.SeedFixtures.Semester;
 import com.crs.backend.support.SeedFixtures.Student;
+import com.crs.backend.support.SeedLectures;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,20 +32,14 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 기간은 FakeSchedulePolicy, 성적은 FakeGradeQuery 로 정합니다. 기본은 2027-1 수강신청 기간이고 확정 성적은 없습니다.
  *
- * <p>쓰는 2027-1 강의: 198번 컴파일러(화·목 09:00, 3학점, 선수과목 없음), 218번 심리학의이해 2분반(화·목 09:00), 217번 같은
- * 과목 1분반, 209번 기업가정신(월·수 10:30, 3학점), 211번 채플(P/F), 193번 알고리즘(선수과목 자료구조 D-)
+ * <p>쓰는 2027-1 강의: 컴파일러(화·목 09:00, 3학점, 선수과목 없음), 심리학의이해 1·2분반(2분반은 화·목 09:00), 기업가정신(월·수
+ * 10:30, 3학점), 채플(P/F, 0.5학점), 사회봉사(P/F), 알고리즘(선수과목 자료구조 D-)
  */
 @AutoConfigureMockMvc
 @Transactional
 class EnrollmentControllerTest extends IntegrationTest {
 
     private static final int COMPILER = Lecture.ONE_SEAT_LEFT;
-    private static final int PSYCHOLOGY_1 = 217;
-    private static final int PSYCHOLOGY_2 = Lecture.TWO_SECTIONS;
-    private static final int ENTREPRENEURSHIP = 209;
-    private static final int CHAPEL = 211;
-    private static final int ALGORITHM = Lecture.PREREQ_TARGET;
-
     private static final String STUDENT = Student.GPA_EXACTLY_4;
 
     @Autowired
@@ -62,10 +57,23 @@ class EnrollmentControllerTest extends IntegrationTest {
     @Autowired
     FakeGradeQuery gradeQuery;
 
+    int psychology1;
+    int psychology2;
+    int entrepreneurship;
+    int chapel;
+    int communityService;
+    int algorithm;
+
     @BeforeEach
     void setUp() {
         schedulePolicy.at(Semester.Y2027_FIRST, false);
         schedulePolicy.enrollOpen(true);
+        psychology1 = lecture("1030007", 1);
+        psychology2 = lecture("1030007", 2);
+        entrepreneurship = lecture("1020020", 1);
+        chapel = lecture("1030001", 1);
+        communityService = lecture("1030002", 1);
+        algorithm = lecture("1010013", 1);
     }
 
     @AfterEach
@@ -107,8 +115,8 @@ class EnrollmentControllerTest extends IntegrationTest {
 
     @Test
     void 같은_과목은_분반이_달라도_하나만_신청한다() throws Exception {
-        enroll(STUDENT, PSYCHOLOGY_1).andExpect(status().isCreated());
-        enroll(STUDENT, PSYCHOLOGY_2).andExpect(jsonPath("$.code").value("ALREADY_ENROLLED_COURSE"));
+        enroll(STUDENT, psychology1).andExpect(status().isCreated());
+        enroll(STUDENT, psychology2).andExpect(jsonPath("$.code").value("ALREADY_ENROLLED_COURSE"));
     }
 
     @Test
@@ -124,8 +132,22 @@ class EnrollmentControllerTest extends IntegrationTest {
 
     @Test
     void PF_과목은_F일_때만_재수강한다() throws Exception {
+        gradeQuery.put(STUDENT, "1030002", "P");
+        enroll(STUDENT, communityService).andExpect(jsonPath("$.code").value("RETAKE_NOT_ALLOWED"));
+
+        gradeQuery.put(STUDENT, "1030002", "F");
+        enroll(STUDENT, communityService)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.retake").value(true));
+    }
+
+    @Test
+    void 채플은_P를_받았어도_학기마다_신청하고_재수강이_아니다() throws Exception {
         gradeQuery.put(STUDENT, "1030001", "P");
-        enroll(STUDENT, CHAPEL).andExpect(jsonPath("$.code").value("RETAKE_NOT_ALLOWED"));
+        enroll(STUDENT, chapel)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.retake").value(false));
+        enroll(STUDENT, chapel).andExpect(jsonPath("$.code").value("ALREADY_ENROLLED_COURSE"));
     }
 
     @Test
@@ -150,7 +172,7 @@ class EnrollmentControllerTest extends IntegrationTest {
     @Test
     void 이미_신청한_강의와_시간이_겹치면_신청할_수_없다() throws Exception {
         enroll(STUDENT, COMPILER).andExpect(status().isCreated());
-        enroll(STUDENT, PSYCHOLOGY_2)
+        enroll(STUDENT, psychology2)
                 .andExpect(jsonPath("$.code").value("TIME_CONFLICT"))
                 .andExpect(jsonPath("$.detail").value(COMPILER + "번 컴파일러 강의와 시간이 겹칩니다."));
     }
@@ -159,21 +181,21 @@ class EnrollmentControllerTest extends IntegrationTest {
     void 최대학점을_넘으면_신청할_수_없고_채플은_세지_않는다() throws Exception {
         schedulePolicy.maxCredit(3);
         enroll(STUDENT, COMPILER).andExpect(status().isCreated());
-        enroll(STUDENT, ENTREPRENEURSHIP).andExpect(jsonPath("$.code").value("CREDIT_EXCEEDED"));
-        enroll(STUDENT, CHAPEL).andExpect(status().isCreated());
+        enroll(STUDENT, entrepreneurship).andExpect(jsonPath("$.code").value("CREDIT_EXCEEDED"));
+        enroll(STUDENT, chapel).andExpect(status().isCreated());
     }
 
     @Test
     void 선수과목을_이수해야_신청할_수_있다() throws Exception {
-        enroll(STUDENT, ALGORITHM)
+        enroll(STUDENT, algorithm)
                 .andExpect(jsonPath("$.code").value("PREREQUISITE_NOT_MET"))
                 .andExpect(jsonPath("$.detail").value("선수과목 자료구조을(를) 이수하지 않았습니다."));
 
         gradeQuery.put(STUDENT, "1010007", "F");
-        enroll(STUDENT, ALGORITHM).andExpect(jsonPath("$.code").value("PREREQUISITE_NOT_MET"));
+        enroll(STUDENT, algorithm).andExpect(jsonPath("$.code").value("PREREQUISITE_NOT_MET"));
 
         gradeQuery.put(STUDENT, "1010007", "D0");
-        enroll(STUDENT, ALGORITHM).andExpect(status().isCreated());
+        enroll(STUDENT, algorithm).andExpect(status().isCreated());
     }
 
     @Test
@@ -199,6 +221,10 @@ class EnrollmentControllerTest extends IntegrationTest {
         cancel(STUDENT, COMPILER)
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ENROLLMENT_NOT_FOUND"));
+    }
+
+    private int lecture(String crsCd, int sectNo) {
+        return SeedLectures.of(jdbc, crsCd, Semester.Y2027_FIRST, sectNo);
     }
 
     private int enrlCnt(int lecNo) {

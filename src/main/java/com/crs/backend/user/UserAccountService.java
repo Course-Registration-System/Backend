@@ -3,6 +3,7 @@ package com.crs.backend.user;
 import com.crs.backend.common.BusinessException;
 import com.crs.backend.common.ErrorCode;
 import com.crs.backend.common.auth.Role;
+import com.crs.backend.user.dto.PasswordResetRequest;
 import com.crs.backend.user.dto.UserCreateRequest;
 import com.crs.backend.user.dto.UserResponse;
 import com.crs.backend.user.dto.UserUpdateRequest;
@@ -76,6 +77,16 @@ public class UserAccountService {
             userAccountRepository.updateProfessor(usrNo, request.deptNo(), request.office());
         }
         return getUser(usrNo);
+    }
+
+    /** 비밀번호를 잊은 학생·교수에게 관리자가 새 비밀번호를 정해 줍니다. */
+    @Transactional
+    public void resetPassword(String usrNo, PasswordResetRequest request) {
+        getUser(usrNo);
+        if (Passwords.tooLong(request.newPassword())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "비밀번호가 너무 깁니다.");
+        }
+        userAccountRepository.updatePassword(usrNo, passwordEncoder.encode(request.newPassword()));
     }
 
     @Transactional
