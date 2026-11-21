@@ -8,6 +8,7 @@
 | --- | --- |
 | 언어 | Java 21 |
 | 프레임워크 | Spring Boot 4.1 (Web MVC, JDBC, Validation) |
+| 인증 | JWT(jjwt 0.12.6), 비밀번호 해시 BCrypt(spring-security-crypto 모듈만) |
 | DB 접근 | JdbcTemplate + 직접 작성한 SQL (ORM 사용 안 함) |
 | 포맷터 | Spotless (Palantir Java Format) |
 | 빌드 | Gradle (wrapper 포함, 별도 설치 불필요) |
@@ -60,7 +61,7 @@ DDL 은 Docs 레포의 물리적 데이터 모델(`schema.sql`, `grants.sql`)이
 서버가 시작할 때 Flyway 가 시드(`db/seed/R__seed_dev.sql`)도 함께 넣습니다. 개발·테스트·시연 모두 이 데이터를 씁니다.
 
 - 시드는 **2026-12-21 10:00(2026-2 성적 입력 기간)** 상태입니다. 시연은 2026-2 성적 입력·확정 → 2027-1 수강신청 순서로 진행하고, 장면이 바뀔 때 시연 API 로 시계를 옮기고 그 사이의 데이터(오버레이)를 넣습니다. 흐름, 시점, 모듈별 사례, 로그인 계정은 [docs/seed-data.md](docs/seed-data.md) 에 있습니다. 모든 계정의 비밀번호는 `test1234!` 입니다.
-- 현재 시각이 필요한 코드는 `Clock` 빈을 주입받아 씁니다. `LocalDateTime.now()` 를 직접 부르거나 SQL 에서 `NOW()` 를 쓰지 않습니다. 서버 시작 시각은 `.env` 의 `CLOCK_FIXED_AT` 입니다.
+- 현재 시각이 필요한 코드는 `Clock` 빈을 주입받아 씁니다. `LocalDateTime.now()` 를 직접 부르거나 SQL 에서 `NOW()` 를 쓰지 않습니다. 기본값이 `CURRENT_TIMESTAMP` 인 컬럼(장바구니 등록일시, 수강신청 신청일시)도 INSERT 할 때 `Clock` 값을 직접 넣습니다. 서버 시작 시각은 `.env` 의 `CLOCK_FIXED_AT` 입니다.
 - 시연 API(`/api/dev/clock`, `/api/dev/scenarios/*`)는 demo 프로필에서만 켜집니다. 프로필을 지정하지 않으면 demo 입니다.
 - 시드는 `tools/seed/build_seed.py` 가 만듭니다(Python 3, 표준 라이브러리만). 생성물을 직접 고치지 말고 생성기를 고친 뒤 `python -X utf8 tools/seed/build_seed.py` 로 다시 만듭니다. `SeedDataTest` 가 시점마다 시드의 업무 규칙 위반을 검사합니다.
 - 시연용 데이터 제어 SQL 은 [demo/](demo/README.md) 에 있습니다.
@@ -93,9 +94,10 @@ Testcontainers 로 MySQL 8.4 컨테이너를 띄워 실행합니다. Docker 가 
 ```
 com.crs.backend
 ├─ common      공통 (예외 처리, 응답 포맷, 헬스체크, 현재 시각)
-│  └─ auth     토큰 검증, 로그인 사용자 정보(CurrentUser), 권한 검사
+│  ├─ auth     토큰 검증, 로그인 사용자 정보(CurrentUser), 권한 검사
+│  └─ demo     시연 전용 API: 시계 옮기기, 시드 오버레이 적용 (demo 프로필)
 ├─ user        로그인·토큰 발급, 계정 등록·수정·비활성화 (USR-01·02)
-├─ academic    학기·학사일정, 최대학점 산정, 대시보드 (ACA-01·04)
+├─ academic    학기·학사일정, 기간·학기 판정(SchedulePolicy), 최대학점 산정, 대시보드 (ACA-01·04)
 ├─ course      과목, 선수과목 (ACA-02)
 ├─ lecture     강의 개설·검색, 담당 강의, 수강생 명단, 강의계획서, 조교 (ACA-03, REG-01, LEC-01~04)
 ├─ enrollment  장바구니, 수강신청·취소, 신청 현황, 시간표 (REG-02~05)
