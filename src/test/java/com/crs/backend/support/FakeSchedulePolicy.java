@@ -1,14 +1,17 @@
 package com.crs.backend.support;
 
 import com.crs.backend.academic.SchedulePolicy;
+import java.time.LocalDateTime;
 import java.util.Optional;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 /**
  * 테스트용 SchedulePolicy. academic 모듈의 실제 구현이 들어오면 지우고, 장바구니·수강신청 테스트는 시계(Clock)와 시드 일정으로 바꿉니다.
  *
- * <p>테스트가 값을 바꿨으면 끝날 때 reset() 으로 되돌립니다.
+ * <p>테스트가 값을 바꿨으면 끝날 때 reset() 으로 되돌립니다. 실제 구현(AcademicSchedulePolicy)도 빈이라 @Primary 로 이쪽이 주입됩니다.
  */
+@Primary
 @Component
 public class FakeSchedulePolicy implements SchedulePolicy {
 
@@ -61,5 +64,25 @@ public class FakeSchedulePolicy implements SchedulePolicy {
     @Override
     public int maxCredit(String stdNo, int semNo) {
         return maxCredit;
+    }
+
+    @Override
+    public Optional<LocalDateTime> cartStart(int semNo) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<LocalDateTime> enrollStart(int semNo) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<LocalDateTime> adjustStart(int semNo) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<LocalDateTime> adjustEnd(int semNo) {
+        return Optional.empty();
     }
 }
