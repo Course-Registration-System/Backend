@@ -59,7 +59,7 @@ public final class SeedFixtures {
         /** 2026-2 P/F 과목만 → 평점 없음 → 최대학점 18 */
         public static final String PASS_FAIL_ONLY = "20250003";
 
-        /** s1 에서 졸업 처리(정규 8학기, 130학점 이상) */
+        /** s1 에서 졸업 처리(정규 8학기, 채플 뺀 130학점 이상, 채플 P 6학기 이상) */
         public static final String GRADUATING = "20230001";
 
         /** 휴학생. 2027-1 최대학점 없음 */
@@ -77,7 +77,7 @@ public final class SeedFixtures {
         /** 자료구조 D+ → 데이터베이스(최소 C0) 신청 불가(T2) */
         public static final String PREREQ_NOT_MET = "20240004";
 
-        /** 조교. 2027-1 199번 강의 */
+        /** 조교. 2027-1 198번 강의 */
         public static final String TEACHING_ASSISTANT = "20240005";
 
         /** 2026-2 관리자 수동 추가 1건. 3학년이라 T1 에 신청 불가 */
@@ -102,57 +102,57 @@ public final class SeedFixtures {
         private Lecture() {}
 
         /** 2026-2 성적 입력 시연(입력중, 수강생 12명, A 한도 4명) */
-        public static final int DEMO_GRADE = 183;
+        public static final int DEMO_GRADE = 182;
 
         /** 2026-2 성적 미입력 */
-        public static final int NOT_ENTERED = 157;
+        public static final int NOT_ENTERED = 158;
 
         /** 2027-1 정원 마감(s2 이후) */
-        public static final int FULL = 191;
+        public static final int FULL = 190;
 
         /** 2027-1 한 자리 남음(s2 이후) */
-        public static final int ONE_SEAT_LEFT = 198;
+        public static final int ONE_SEAT_LEFT = 197;
 
         /** DEMO 학생이 21학점을 채우려고 더 담은 강의 */
-        public static final int DEMO_EXTRA = 197;
+        public static final int DEMO_EXTRA = 203;
 
         /** OVER_MAX_CREDIT 학생이 더 담은 강의 */
-        public static final int OVER_MAX_CREDIT_TARGET = 189;
+        public static final int OVER_MAX_CREDIT_TARGET = 196;
 
         /** TIME_CONFLICT 학생이 더 담은, 시간이 겹치는 강의 */
-        public static final int TIME_CONFLICT_TARGET = 209;
+        public static final int TIME_CONFLICT_TARGET = 208;
 
         /** PREREQ_NOT_MET_SOPHOMORE 학생이 담은, 선수과목이 있는 강의 */
-        public static final int PREREQ_TARGET = 193;
+        public static final int PREREQ_TARGET = 202;
 
         /** 2027-1 온라인(강의실 없음) */
-        public static final int ONLINE = 222;
+        public static final int ONLINE = 221;
 
         /** 2027-1 대면인데 강의실 미배정 */
-        public static final int NO_ROOM = 225;
+        public static final int NO_ROOM = 224;
 
         /** 2027-1 폐강 */
-        public static final int CLOSED = 227;
+        public static final int CLOSED = 226;
 
         /** 같은 과목의 2분반 */
-        public static final int TWO_SECTIONS = 218;
+        public static final int TWO_SECTIONS = 217;
 
         /** 전공 영어강의 → 상대평가 제외 */
-        public static final int ENGLISH_MAJOR = 195;
+        public static final int ENGLISH_MAJOR = 194;
 
         /** 교양 영어강의 → 상대평가 대상 */
-        public static final int ENGLISH_GENERAL = 224;
+        public static final int ENGLISH_GENERAL = 223;
 
         /** 상대평가 제외 인정 */
-        public static final int RELATIVE_EXEMPT = 207;
+        public static final int RELATIVE_EXEMPT = 206;
 
         /** 반영비율 미입력 */
-        public static final int NO_WEIGHTS = 196;
+        public static final int NO_WEIGHTS = 195;
 
         /** RETAKE 학생이 재수강 신청한 강의 */
-        public static final int RETAKE_TARGET = 194;
+        public static final int RETAKE_TARGET = 193;
 
         /** TEACHING_ASSISTANT 학생이 조교인 강의 */
-        public static final int TA_TARGET = 199;
+        public static final int TA_TARGET = 198;
     }
 }
