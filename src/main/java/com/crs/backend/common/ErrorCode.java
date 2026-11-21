@@ -30,7 +30,14 @@ public enum ErrorCode {
     CAPACITY_BELOW_ENROLLED(HttpStatus.CONFLICT, "정원을 현재 신청인원보다 작게 줄일 수 없습니다."),
     ROOM_REQUIRED(HttpStatus.CONFLICT, "정정 기간이 시작돼 대면 수업은 강의실을 지정해야 합니다."),
     LECTURE_CLOSED(HttpStatus.CONFLICT, "폐강된 강의입니다."),
-    CLOSE_PERIOD_OVER(HttpStatus.CONFLICT, "정정 기간이 끝나 폐강할 수 없습니다.");
+    CLOSE_PERIOD_OVER(HttpStatus.CONFLICT, "정정 기간이 끝나 폐강할 수 없습니다."),
+
+    NO_REGISTRATION_SEMESTER(HttpStatus.CONFLICT, "지금은 신청 대상 학기가 없습니다."),
+    CART_CLOSED(HttpStatus.CONFLICT, "장바구니 기간이 아닙니다."),
+    STUDENT_STATUS_NOT_ALLOWED(HttpStatus.FORBIDDEN, "이번 학기에 신청할 수 없는 학적상태입니다."),
+    OTHER_SEMESTER_LECTURE(HttpStatus.CONFLICT, "신청 대상 학기의 강의가 아닙니다."),
+    DUPLICATE_CART(HttpStatus.CONFLICT, "이미 장바구니에 담은 강의입니다."),
+    CART_NOT_FOUND(HttpStatus.NOT_FOUND, "장바구니에 없는 강의입니다.");
 
     private final HttpStatus status;
     private final String message;
