@@ -1,4 +1,4 @@
-"""gen_bulk.py 가 만든 CSV 를 MySQL 컨테이너의 별도 DB 에 적재하고 verify.sql 로 검사한다.
+"""gen_bulk.py 가 만든 CSV 를 MySQL 컨테이너의 별도 DB 에 적재하고 seed-checks.sql 로 검사한다.
 
 사용: python -X utf8 tools/bulk/load_bulk.py --dir build/bulk/S [--container crs-mysql] [--database crs_bulk]
      root 비밀번호는 --password, 환경 변수 MYSQL_ROOT_PASSWORD, 프로젝트 루트 .env 순서로 찾는다.
@@ -6,8 +6,9 @@
 순서
 1. DB 를 지우고 다시 만든 뒤 V1__init_schema.sql 로 테이블을 만든다(개발 DB crs 는 건드리지 않는다)
 2. CSV 를 컨테이너의 /var/lib/mysql-files/bulk 로 복사한다(MySQL 이미지의 secure_file_priv 위치)
-3. FK 검사를 끄고 LOAD DATA 로 넣은 뒤 다시 켜고, 통계를 갱신한다(ANALYZE TABLE)
-4. verify.sql(FK 고아 행)과 seed-checks.sql(업무 규칙, 시드와 같은 검사)의 위반 건수를 출력한다. 하나라도 0 이 아니면 종료 코드 1
+3. 부모 테이블부터(TABLES 순서) LOAD DATA 로 넣고 통계를 갱신한다(ANALYZE TABLE).
+   FK·UNIQUE 검사를 끄지 않으므로 고아 행이나 키 중복이 있으면 적재가 실패한다
+4. seed-checks.sql(업무 규칙, 시드와 같은 검사)의 위반 건수를 출력한다. 하나라도 0 이 아니면 종료 코드 1
 """
 import argparse
 import os
@@ -21,9 +22,8 @@ from gen_bulk import TABLES  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 SCHEMA = REPO / "src/main/resources/db/migration/V1__init_schema.sql"
-VERIFY = Path(__file__).resolve().parent / "verify.sql"
 SEED_CHECKS = REPO / "src/test/resources/seed/seed-checks.sql"
-# 시드 사례 전용 검사. 이름이 바뀌면(예: #20 이 채플 예외를 넣으면) 다시 돈다
+# 시드의 특정 학번만 보는 검사. 대량 데이터에는 그 학번이 없다
 SEED_ONLY = {
     "2026-2 평점: 20240001은 정확히 4.0, 20240002는 4.0 미만",
 }
@@ -76,12 +76,11 @@ def main():
     subprocess.run(["docker", "exec", args.container, "rm", "-rf", REMOTE_DIR], check=True)
     subprocess.run(["docker", "cp", str(args.dir.resolve()), f"{args.container}:{REMOTE_DIR}"], check=True)
 
-    loads = ["SET FOREIGN_KEY_CHECKS = 0;", "SET UNIQUE_CHECKS = 0;"]
+    loads = []
     for table, columns in TABLES.items():
         loads.append(
             f"LOAD DATA INFILE '{REMOTE_DIR}/{table}.csv' INTO TABLE {table} CHARACTER SET utf8mb4 "
             f"FIELDS TERMINATED BY ',' LINES TERMINATED BY '\\n' ({', '.join(columns)});")
-    loads += ["SET UNIQUE_CHECKS = 1;", "SET FOREIGN_KEY_CHECKS = 1;"]
     # 적재 직후에는 통계가 비어 있어 검사 SQL 이 나쁜 실행 계획을 고른다
     loads.append(f"ANALYZE TABLE {', '.join(TABLES)};")
     mysql(args.container, pw, "\n".join(loads), db)
@@ -94,10 +93,6 @@ def main():
 
     failed = 0
     started = time.time()
-    print("FK 고아 행 (verify.sql)")
-    for line in mysql(args.container, pw, VERIFY.read_text(encoding="utf-8"), db).strip().splitlines():
-        chk, n = line.rsplit("\t", 1)
-        failed += report(chk, int(n))
     print("업무 규칙 (seed-checks.sql)")
     for name, sql in seed_checks():
         t = time.time()
