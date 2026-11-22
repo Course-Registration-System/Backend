@@ -85,15 +85,15 @@ class GradeReportControllerTest extends IntegrationTest {
         assertThat(counted).containsExactly(false, true);
         assertThat(retake).containsExactly(false, true);
 
-        // s1 적용 후 시드 성적 37줄로 직접 계산한 값. 2024-1 이산수학 F(3학점)는 재수강해서 누적에서 빠진다
-        // 누적 평점 279.7 / 103 = 2.7155, 이수 학점 103 - 2026-1 F 3학점 = 100(채플 0.5 제외)
-        // 2024-1 학기 평점은 그 F 를 넣어 34.9 / 16 = 2.18
+        // s1 적용 후 시드 성적 42줄(채플 6줄 포함)로 직접 계산한 값. 2024-1 이산수학 F(3학점)는 재수강해서 누적에서 빠진다
+        // 누적 평점 274.2 / 103 = 2.662, 이수 학점 103 - 2026-1 F 3학점 = 100(채플 제외)
+        // 2024-1 학기 평점은 그 F 를 넣어 35.1 / 16 = 2.19
         Number gpa = JsonPath.read(body, "$.cumulativeGpa");
         Number earned = JsonPath.read(body, "$.earnedCredits");
         List<Number> firstSemesterGpa = JsonPath.read(body, "$.semesters[?(@.yr == 2024 && @.semType == 'FIRST')].gpa");
-        assertThat(gpa.doubleValue()).isEqualTo(2.72);
+        assertThat(gpa.doubleValue()).isEqualTo(2.66);
         assertThat(earned.doubleValue()).isEqualTo(100.0);
-        assertThat(firstSemesterGpa).extracting(Number::doubleValue).containsExactly(2.18);
+        assertThat(firstSemesterGpa).extracting(Number::doubleValue).containsExactly(2.19);
     }
 
     @Test
