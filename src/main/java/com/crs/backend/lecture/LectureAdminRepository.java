@@ -4,7 +4,6 @@ import com.crs.backend.lecture.dto.LectureResponse;
 import com.crs.backend.lecture.dto.TimeSlotResponse;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -19,7 +18,7 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
 /**
- * 강의 개설 관리(ACA-03)의 SQL. 과목·학기·교수·강의실·학사일정은 다른 업무의 테이블이라 읽기만 합니다.
+ * 강의 개설 관리(ACA-03)의 SQL. 과목·학기·교수·강의실은 다른 업무의 테이블이라 읽기만 합니다.
  *
  * <p>폐강할 때 함께 정리하는 수강신청·장바구니는 EnrollmentService 가 씁니다.
  */
@@ -179,38 +178,6 @@ public class LectureAdminRepository {
     public boolean lockLecture(int lecNo) {
         return !jdbc.queryForList("SELECT lec_no FROM lecture WHERE lec_no = ? FOR UPDATE", Integer.class, lecNo)
                 .isEmpty();
-    }
-
-    // ---- 학사일정 (ACA-01 소관, 읽기만)
-
-    /** 장바구니 기간의 시작. 장바구니 일정이 없으면 수강신청 시작으로 대신합니다. */
-    public Optional<LocalDateTime> findCartStart(int semNo) {
-        return Optional.ofNullable(jdbc.queryForObject(
-                "SELECT MIN(start_dtm) FROM academic_schedule WHERE sem_no = ? AND schd_type IN ('CART', 'ENROLL')",
-                LocalDateTime.class,
-                semNo));
-    }
-
-    /** 학년별 수강신청일 중 가장 이른 시작. 일정이 아직 없으면 비어 있습니다. */
-    public Optional<LocalDateTime> findEnrollStart(int semNo) {
-        return Optional.ofNullable(jdbc.queryForObject(
-                "SELECT MIN(start_dtm) FROM academic_schedule WHERE sem_no = ? AND schd_type = 'ENROLL'",
-                LocalDateTime.class,
-                semNo));
-    }
-
-    public Optional<LocalDateTime> findAdjustStart(int semNo) {
-        return Optional.ofNullable(jdbc.queryForObject(
-                "SELECT MIN(start_dtm) FROM academic_schedule WHERE sem_no = ? AND schd_type = 'ADJUST'",
-                LocalDateTime.class,
-                semNo));
-    }
-
-    public Optional<LocalDateTime> findAdjustEnd(int semNo) {
-        return Optional.ofNullable(jdbc.queryForObject(
-                "SELECT MAX(end_dtm) FROM academic_schedule WHERE sem_no = ? AND schd_type = 'ADJUST'",
-                LocalDateTime.class,
-                semNo));
     }
 
     // ---- 쓰기

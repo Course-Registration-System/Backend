@@ -1,5 +1,6 @@
 package com.crs.backend.support;
 
+import java.util.Collections;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
@@ -9,6 +10,19 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public final class SeedLectures {
 
     private SeedLectures() {}
+
+    /** 재학생 중 주어진 과목을 한 번도 신청한 적 없는 학생. 재수강·같은 과목 검사에 걸리지 않게 할 때 씁니다. */
+    public static String studentNeverTook(JdbcTemplate jdbc, String... crsCds) {
+        String in = String.join(",", Collections.nCopies(crsCds.length, "?"));
+        return jdbc.queryForObject("""
+                SELECT s.std_no FROM student s
+                 WHERE s.std_stat = 'ATTENDING'
+                   AND NOT EXISTS (SELECT 1 FROM enrollment e JOIN lecture l ON l.lec_no = e.lec_no
+                                    WHERE e.std_no = s.std_no AND l.crs_cd IN (%s))
+                 ORDER BY s.std_no
+                 LIMIT 1
+                """.formatted(in), String.class, (Object[]) crsCds);
+    }
 
     public static int of(JdbcTemplate jdbc, String crsCd, int semNo, int sectNo) {
         return jdbc.queryForObject(

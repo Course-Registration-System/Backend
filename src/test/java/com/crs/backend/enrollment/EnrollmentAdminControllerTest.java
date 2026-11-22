@@ -7,18 +7,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.crs.backend.common.SettableClock;
 import com.crs.backend.common.auth.JwtProvider;
 import com.crs.backend.common.auth.Role;
 import com.crs.backend.support.Bearer;
-import com.crs.backend.support.FakeSchedulePolicy;
 import com.crs.backend.support.IntegrationTest;
 import com.crs.backend.support.SeedFixtures.Account;
 import com.crs.backend.support.SeedFixtures.Lecture;
 import com.crs.backend.support.SeedFixtures.Semester;
 import com.crs.backend.support.SeedFixtures.Student;
 import com.crs.backend.support.SeedLectures;
-import com.crs.backend.support.SeedTime;
-import java.time.LocalDateTime;
+import com.crs.backend.support.TestClock;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,7 +31,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 시계는 T0(2026-12-21 10:00)이고, 첫 수강신청일과 정정 종료는 FakeSchedulePolicy 로 정합니다. 기본은 T0 가 그 사이입니다.
+ * 실제 학사일정으로 판정합니다. 기본 시각은 2027-1 정정 기간입니다.
  *
  * <p>쓰는 2027-1 강의: 컴파일러(화·목 09:00, 정원 4), 심리학의이해 2분반(화·목 09:00)
  */
@@ -42,7 +41,6 @@ class EnrollmentAdminControllerTest extends IntegrationTest {
 
     private static final int COMPILER = Lecture.ONE_SEAT_LEFT;
     private static final String STUDENT = Student.GPA_EXACTLY_4;
-    private static final LocalDateTime NOW = LocalDateTime.parse(SeedTime.T0);
 
     @Autowired
     MockMvc mvc;
@@ -54,19 +52,19 @@ class EnrollmentAdminControllerTest extends IntegrationTest {
     JdbcTemplate jdbc;
 
     @Autowired
-    FakeSchedulePolicy schedulePolicy;
+    SettableClock clock;
 
     String admin;
 
     @BeforeEach
     void setUp() {
-        schedulePolicy.enrollPeriod(NOW.minusDays(1), NOW.plusDays(1));
+        TestClock.at(clock, TestClock.ADJUST);
         admin = Bearer.of(jwtProvider, Account.ADMIN, Role.ADMIN);
     }
 
     @AfterEach
     void tearDown() {
-        schedulePolicy.reset();
+        TestClock.reset(clock);
     }
 
     @Test
@@ -95,19 +93,22 @@ class EnrollmentAdminControllerTest extends IntegrationTest {
 
     @Test
     void 기간_밖에는_추가와_취소를_할_수_없다() throws Exception {
-        schedulePolicy.enrollPeriod(NOW.plusDays(1), NOW.plusDays(2));
+        // 첫 수강신청일(2/9) 전
+        TestClock.at(clock, TestClock.CART);
         add(COMPILER, STUDENT)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("ENROLL_CLOSED"));
 
-        schedulePolicy.enrollPeriod(NOW.minusDays(2), NOW);
+        // 정정 종료(3/9 17:00) 뒤
+        TestClock.at(clock, "2027-03-10T12:00:00");
         cancel(COMPILER, STUDENT).andExpect(jsonPath("$.code").value("ENROLL_CLOSED"));
     }
 
     @Test
     void 정원_말고는_학생_신청과_같은_조건을_지킨다() throws Exception {
-        add(COMPILER, STUDENT).andExpect(status().isCreated());
-        add(SeedLectures.of(jdbc, "1030007", Semester.Y2027_FIRST, 2), STUDENT)
+        String stdNo = SeedLectures.studentNeverTook(jdbc, "1010021", "1030007");
+        add(COMPILER, stdNo).andExpect(status().isCreated());
+        add(SeedLectures.of(jdbc, "1030007", Semester.Y2027_FIRST, 2), stdNo)
                 .andExpect(jsonPath("$.code").value("TIME_CONFLICT"));
         add(COMPILER, Student.ON_LEAVE).andExpect(jsonPath("$.code").value("STUDENT_STATUS_NOT_ALLOWED"));
         add(Lecture.CLOSED, STUDENT).andExpect(jsonPath("$.code").value("LECTURE_CLOSED"));

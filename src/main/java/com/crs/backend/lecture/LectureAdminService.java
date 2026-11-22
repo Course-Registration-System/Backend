@@ -1,5 +1,6 @@
 package com.crs.backend.lecture;
 
+import com.crs.backend.academic.SchedulePolicy;
 import com.crs.backend.common.BusinessException;
 import com.crs.backend.common.ErrorCode;
 import com.crs.backend.enrollment.EnrollmentService;
@@ -22,12 +23,17 @@ public class LectureAdminService {
 
     private final LectureAdminRepository lectureAdminRepository;
     private final EnrollmentService enrollmentService;
+    private final SchedulePolicy schedulePolicy;
     private final Clock clock;
 
     public LectureAdminService(
-            LectureAdminRepository lectureAdminRepository, EnrollmentService enrollmentService, Clock clock) {
+            LectureAdminRepository lectureAdminRepository,
+            EnrollmentService enrollmentService,
+            SchedulePolicy schedulePolicy,
+            Clock clock) {
         this.lectureAdminRepository = lectureAdminRepository;
         this.enrollmentService = enrollmentService;
+        this.schedulePolicy = schedulePolicy;
         this.clock = clock;
     }
 
@@ -113,7 +119,7 @@ public class LectureAdminService {
             throw new BusinessException(ErrorCode.LECTURE_CLOSED);
         }
         LocalDateTime now = LocalDateTime.now(clock);
-        if (passed(lectureAdminRepository.findAdjustEnd(current.semNo()))) {
+        if (passed(schedulePolicy.adjustEnd(current.semNo()))) {
             throw new BusinessException(ErrorCode.CLOSE_PERIOD_OVER);
         }
 
@@ -161,21 +167,21 @@ public class LectureAdminService {
 
     /** 새 강의는 장바구니 기간이 시작되기 전까지만 개설합니다(처리 시기). */
     private void checkOpenPeriod(int semNo) {
-        if (passed(lectureAdminRepository.findCartStart(semNo))) {
+        if (passed(schedulePolicy.cartStart(semNo))) {
             throw new BusinessException(ErrorCode.LECTURE_OPEN_CLOSED);
         }
     }
 
     /** 강의실·담당 교수·정원은 정정 기간이 끝나기 전까지만 바꿀 수 있습니다. */
     private void checkUpdateOpen(int semNo) {
-        if (passed(lectureAdminRepository.findAdjustEnd(semNo))) {
+        if (passed(schedulePolicy.adjustEnd(semNo))) {
             throw new BusinessException(ErrorCode.UPDATE_PERIOD_OVER);
         }
     }
 
     /** 강의시간·수업유형은 수강신청 기간이 시작되기 전까지만 바꿀 수 있습니다. 신청한 학생의 시간표가 겹치지 않게 하려는 것입니다. */
     private void checkTimeChangeOpen(int semNo) {
-        if (passed(lectureAdminRepository.findEnrollStart(semNo))) {
+        if (passed(schedulePolicy.enrollStart(semNo))) {
             throw new BusinessException(ErrorCode.TIME_CHANGE_CLOSED);
         }
     }
@@ -184,7 +190,7 @@ public class LectureAdminService {
     private void checkRoomAssigned(int semNo, List<LectureTimeSlot> slots) {
         boolean unassigned =
                 slots.stream().anyMatch(slot -> slot.clsType() == ClsType.OFFLINE && slot.roomCd() == null);
-        if (unassigned && passed(lectureAdminRepository.findAdjustStart(semNo))) {
+        if (unassigned && passed(schedulePolicy.adjustStart(semNo))) {
             throw new BusinessException(ErrorCode.ROOM_REQUIRED);
         }
     }
