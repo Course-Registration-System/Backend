@@ -23,7 +23,7 @@ from gen_bulk import TABLES  # noqa: E402
 REPO = Path(__file__).resolve().parents[2]
 SCHEMA = REPO / "src/main/resources/db/migration/V1__init_schema.sql"
 SEED_CHECKS = REPO / "src/test/resources/seed/seed-checks.sql"
-# 시드의 특정 학번만 보는 검사. 대량 데이터에는 그 학번이 없다
+# 시드의 특정 학생 사례를 보는 검사. 대량 데이터의 같은 학번은 다른 학생이라 건너뛴다
 SEED_ONLY = {
     "2026-2 평점: 20240001은 정확히 4.0, 20240002는 4.0 미만",
 }
