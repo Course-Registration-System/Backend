@@ -2,6 +2,7 @@ package com.crs.backend.academic;
 
 import com.crs.backend.academic.dto.MaxCreditItem;
 import com.crs.backend.grade.GradePoint;
+import com.crs.backend.grade.SemesterOrder;
 import com.crs.backend.user.StdStat;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -22,7 +23,7 @@ import org.springframework.stereotype.Repository;
 public class MaxCreditRepository {
 
     /** 학기 순서값. 연도×10 + (1학기 1, 여름 2, 2학기 3, 겨울 4). {@link SemType} 선언 순서와 같습니다. */
-    static final String SEM_ORD = "(s.yr * 10 + FIELD(s.sem_type, 'FIRST', 'SUMMER', 'SECOND', 'WINTER'))";
+    static final String SEM_ORD = SemesterOrder.SQL;
 
     // 대상 학기 앞의 확정된 신청 내역. 같은 과목을 여러 번 들었으면 가장 최근 시도가 rn = 1
     private static final String HISTORY = """
