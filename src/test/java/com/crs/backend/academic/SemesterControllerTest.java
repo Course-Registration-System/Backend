@@ -76,6 +76,19 @@ class SemesterControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 번호가_작은_이전_학기로도_현재_학기를_바꿀_수_있다() throws Exception {
+        mvc.perform(asAdmin(put("/api/admin/semesters/" + Semester.Y2027_FIRST + "/current")))
+                .andExpect(status().isOk());
+
+        mvc.perform(asAdmin(put("/api/admin/semesters/" + Semester.Y2026_SECOND + "/current")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.current").value(true));
+        mvc.perform(get("/api/semesters").header(HttpHeaders.AUTHORIZATION, admin))
+                .andExpect(jsonPath("$[?(@.current == true)]", hasSize(1)))
+                .andExpect(jsonPath("$[?(@.current == true)].semNo").value(Semester.Y2026_SECOND));
+    }
+
+    @Test
     void 이미_있는_학기는_등록할_수_없다() throws Exception {
         semester(post("/api/admin/semesters"), 2026, "SECOND")
                 .andExpect(status().isConflict())
@@ -166,6 +179,19 @@ class SemesterControllerTest extends IntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value("시작일시는 종료일시보다 빨라야 합니다."));
         schedule(semNo, "CART", 5, "2027-07-20T10:00:00", "2027-07-24T17:00:00").andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 시작일시가_지났거나_지금인_일정은_등록할_수_없다() throws Exception {
+        int semNo = createSemester(2027, "SECOND");
+        schedule(semNo, "CART", null, "2026-12-20T10:00:00", "2027-07-24T17:00:00")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("시작일시가 지난 일정은 등록할 수 없습니다."));
+        // T0 와 같은 시각도 이미 시작된 것으로 본다
+        schedule(semNo, "CART", null, "2026-12-21T10:00:00", "2027-07-24T17:00:00")
+                .andExpect(status().isBadRequest());
+        schedule(semNo, "CART", null, "2026-12-21T10:01:00", "2027-07-24T17:00:00")
+                .andExpect(status().isCreated());
     }
 
     @Test
