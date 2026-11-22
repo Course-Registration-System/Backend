@@ -20,4 +20,4 @@ DROP TABLE enrollment;
 
 -- 기대: 성공
 -- 장바구니 삭제는 업무상 허용
-DELETE FROM course_cart WHERE std_no = '20260001' AND lec_no = 191;
+DELETE FROM course_cart WHERE std_no = '20260001' AND lec_no = 190;
