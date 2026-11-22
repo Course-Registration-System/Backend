@@ -113,16 +113,33 @@ class MaxCreditSeedTest extends IntegrationTest {
 
     @Test
     void 계절학기는_학적상태만_보고_진급_졸업은_하지_않는다() throws Exception {
+        // 시드의 계절학기는 T0에 일정이 시작돼 있어서, 일정 없는 2027 여름학기를 새로 만든다
+        jdbc.update("INSERT INTO semester (yr, sem_type) VALUES (2027, 'SUMMER')");
+        int summer = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
         List<Map<String, Object>> before = students();
 
-        calculate(Semester.Y2026_WINTER)
+        calculate(summer)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.regular").value(false))
                 .andExpect(jsonPath("$.graduated").value(0));
 
         assertThat(students()).isEqualTo(before);
-        assertThat(maxCredit(Student.DEMO, Semester.Y2026_WINTER)).isEqualTo(6);
-        assertThat(maxCredit(Student.ON_LEAVE, Semester.Y2026_WINTER)).isEqualTo(3);
+        assertThat(maxCredit(Student.DEMO, summer)).isEqualTo(6);
+        assertThat(maxCredit(Student.ON_LEAVE, summer)).isEqualTo(3);
+    }
+
+    @Test
+    void 일정이_시작된_학기는_산정하지_않는다() throws Exception {
+        // 2026 겨울학기는 T0에 정정 기간이 시작된다
+        List<Map<String, Object>> before = students();
+        List<Map<String, Object>> creditsBefore = maxCredits(Semester.Y2026_WINTER);
+
+        calculate(Semester.Y2026_WINTER)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MAX_CREDIT_CLOSED"));
+
+        assertThat(students()).isEqualTo(before);
+        assertThat(maxCredits(Semester.Y2026_WINTER)).isEqualTo(creditsBefore);
     }
 
     @Test
