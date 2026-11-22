@@ -91,11 +91,12 @@ public class LectureTeachingRepository {
                 LECTURE);
     }
 
-    /** 그 학기에 stdNo 가 조교로 배정된 강의. 폐강 포함, 과목코드·분반 순. */
+    /** 그 학기에 stdNo 가 조교로 배정된 강의. 폐강 포함, 과목코드·분반 순. 졸업생이면 빈 목록입니다(조교 권한 없음). */
     public List<TeachingLectureRow> findByAssistant(int semNo, String stdNo) {
         return jdbc.query(
                 LECTURE_SELECT
                         + " JOIN teaching_assistant_assignment a ON a.lec_no = l.lec_no"
+                        + " JOIN student s ON s.std_no = a.std_no AND s.std_stat <> 'GRADUATED'"
                         + " WHERE l.sem_no = :semNo AND a.std_no = :stdNo ORDER BY l.crs_cd, l.sect_no",
                 new MapSqlParameterSource().addValue("semNo", semNo).addValue("stdNo", stdNo),
                 LECTURE);
@@ -122,10 +123,18 @@ public class LectureTeachingRepository {
                 Boolean.class));
     }
 
+    /**
+     * stdNo 가 lecNo 강의의 조교인지. 배정돼 있어도 졸업생이면 false 입니다. 졸업생은 로그인과 성적 조회만 할 수 있다(USR-02). student 는 계정
+     * 관리 모듈 소관이라 읽기만 합니다.
+     */
     public boolean isAssistantOf(int lecNo, String stdNo) {
         return Boolean.TRUE.equals(jdbc.queryForObject(
-                "SELECT EXISTS (SELECT 1 FROM teaching_assistant_assignment WHERE lec_no = :lecNo AND std_no = :stdNo)",
-                new MapSqlParameterSource().addValue("lecNo", lecNo).addValue("stdNo", stdNo),
-                Boolean.class));
+                """
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM teaching_assistant_assignment a
+                    JOIN student s ON s.std_no = a.std_no
+                   WHERE a.lec_no = :lecNo AND a.std_no = :stdNo AND s.std_stat <> 'GRADUATED')
+                """, new MapSqlParameterSource().addValue("lecNo", lecNo).addValue("stdNo", stdNo), Boolean.class));
     }
 }

@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +45,9 @@ class LectureTeachingControllerTest extends IntegrationTest {
 
     @Autowired
     JwtProvider jwtProvider;
+
+    @Autowired
+    JdbcTemplate jdbc;
 
     @Test
     void 교수는_현재_학기의_담당_강의를_과목코드_순으로_본다() throws Exception {
@@ -111,6 +115,16 @@ class LectureTeachingControllerTest extends IntegrationTest {
         as(Student.TEACHING_ASSISTANT, Role.STUDENT, PATH + "?semNo=" + Semester.Y2027_FIRST)
                 .andExpect(jsonPath("$.lectures", hasSize(1)))
                 .andExpect(jsonPath("$.lectures[0].lecNo").value(Lecture.TA_TARGET));
+    }
+
+    @Test
+    void 졸업한_조교는_배정된_강의가_보이지_않는다() throws Exception {
+        // 졸업생은 로그인과 성적 조회만 할 수 있다(USR-02). 졸업 처리는 학사 모듈 일이라 테스트에서만 직접 바꾼다(롤백됨)
+        jdbc.update("UPDATE student SET std_stat = 'GRADUATED' WHERE std_no = ?", Student.TEACHING_ASSISTANT);
+
+        as(Student.TEACHING_ASSISTANT, Role.STUDENT, PATH)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lectures", hasSize(0)));
     }
 
     @Test

@@ -11,7 +11,8 @@ import com.crs.backend.common.auth.CurrentUser;
 public interface LectureAccess {
 
     /**
-     * user 가 lecNo 강의의 담당 교수이거나 배정된 조교면 true. 관리자와 없는 강의는 false 입니다. 강의상태(폐강)·성적상태는 보지 않습니다.
+     * user 가 lecNo 강의의 담당 교수이거나 배정된 조교면 true. 관리자와 없는 강의는 false 입니다. 배정된 조교라도 졸업생이면 false 입니다
+     * (졸업생은 로그인과 성적 조회만 할 수 있음). 강의상태(폐강)·성적상태는 보지 않습니다.
      */
     boolean canManage(CurrentUser user, int lecNo);
 
