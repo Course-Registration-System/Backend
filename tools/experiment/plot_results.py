@@ -24,7 +24,7 @@ VARIANTS = {
     "V1c": ("V1c grade(lec_no, ltr_grd)", "#1baf7a"),
     "V2": ("V2 요약 테이블", "#eda100"),
 }
-QUERIES = {"Q1": "Q1 학생 한 명 성적표", "Q2": "Q2 한 학기 전체 학생 평점", "Q3": "Q3 학과·학기별 평점 분포"}
+QUERIES = {"Q1": "Q1 학생 한 명 성적표", "Q2": "Q2 최대학점 산정 평점(앱 SQL)", "Q3": "Q3 학과·학기별 평점 분포"}
 INK, MUTED, GRID, SURFACE = "#1f1f1e", "#6b6a64", "#e4e3de", "#fcfcfb"
 
 
