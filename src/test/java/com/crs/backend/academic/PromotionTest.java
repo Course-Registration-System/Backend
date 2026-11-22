@@ -190,6 +190,18 @@ class PromotionTest extends IntegrationTest {
         assertThat(third.maxCredit()).isEqualTo(21);
     }
 
+    @Test
+    void 다시_산정하면_이번_대상에서_빠진_학생의_지난_값을_지운다() {
+        History s = regularSemesters("29990001", 2, "A0");
+        maxCreditService.calculate(Semester.Y2027_FIRST);
+        assertThat(s.maxCredit()).isEqualTo(21);
+
+        jdbc.update("UPDATE student SET std_stat = 'ON_LEAVE' WHERE std_no = ?", "29990001");
+        maxCreditService.calculate(Semester.Y2027_FIRST);
+
+        assertThat(s.maxCredit()).isNull();
+    }
+
     /** 정규 8학기, 학기마다 4학점 A0 4과목(128학점) + 2학점 1과목 = 130학점, 채플 P 학기 n개. */
     private History graduateCandidate(String stdNo, int chapelTerms) {
         History s = regularSemesters(stdNo, 8, "A0");

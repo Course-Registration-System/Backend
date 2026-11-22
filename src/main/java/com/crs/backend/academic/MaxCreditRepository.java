@@ -135,38 +135,36 @@ public class MaxCreditRepository {
                 """.formatted(PROGRESS), new MapSqlParameterSource("targetOrd", targetOrd));
     }
 
+    /** 그 학기 최대학점을 모두 지웁니다. 다시 산정할 때 먼저 지워서, 이번 대상에서 빠진 학생(그사이 휴학·졸업)의 지난 값이 남지 않게 합니다. */
+    public void deleteBySemester(int semNo) {
+        jdbc.update(
+                "DELETE FROM semester_maximum_credit WHERE sem_no = :semNo", new MapSqlParameterSource("semNo", semNo));
+    }
+
     /**
      * 정규학기 최대학점. 재학생 전원, 마지막으로 다닌 정규학기 평점(2학년 1학기는 1학년 두 학기 평균)이 4.0 이상이면 21, 아니면 18(성적·평점
-     * 없음 포함, D3). 평점은 나누지 않고
-     * 학점×평점 합 ≥ 4.0×학점 합으로 비교해 반올림 오차를 없앱니다(D4). 다시 실행하면 새 값으로 바꿉니다.
+     * 없음 포함, D3). 평점은 나누지 않고 학점×평점 합 ≥ 4.0×학점 합으로 비교해 반올림 오차를 없앱니다(D4). 계절학기 성적은 보지 않습니다.
      */
-    public void upsertRegular(int semNo, int targetOrd) {
+    public void insertRegular(int semNo, int targetOrd) {
         jdbc.update(
                 """
                 INSERT INTO semester_maximum_credit (std_no, sem_no, max_crdt)
-                SELECT * FROM (
-                    SELECT st.std_no, :semNo AS sem_no,
-                           CASE WHEN p.crd > 0 AND p.pts >= 4.0 * p.crd THEN 21 ELSE 18 END AS new_max
-                      FROM student st
-                      LEFT JOIN (%s) p ON p.std_no = st.std_no
-                     WHERE st.std_stat = 'ATTENDING'
-                ) AS calc
-                ON DUPLICATE KEY UPDATE max_crdt = calc.new_max
+                SELECT st.std_no, :semNo,
+                       CASE WHEN p.crd > 0 AND p.pts >= 4.0 * p.crd THEN 21 ELSE 18 END
+                  FROM student st
+                  LEFT JOIN (%s) p ON p.std_no = st.std_no
+                 WHERE st.std_stat = 'ATTENDING'
                 """.formatted(LAST_REGULAR_GPA),
                 new MapSqlParameterSource("semNo", semNo).addValue("targetOrd", targetOrd));
     }
 
     /** 계절학기 최대학점. 재학생 6, 휴학생 3. */
-    public void upsertSeasonal(int semNo) {
+    public void insertSeasonal(int semNo) {
         jdbc.update("""
                 INSERT INTO semester_maximum_credit (std_no, sem_no, max_crdt)
-                SELECT * FROM (
-                    SELECT st.std_no, :semNo AS sem_no,
-                           CASE st.std_stat WHEN 'ATTENDING' THEN 6 ELSE 3 END AS new_max
-                      FROM student st
-                     WHERE st.std_stat IN ('ATTENDING', 'ON_LEAVE')
-                ) AS calc
-                ON DUPLICATE KEY UPDATE max_crdt = calc.new_max
+                SELECT st.std_no, :semNo, CASE st.std_stat WHEN 'ATTENDING' THEN 6 ELSE 3 END
+                  FROM student st
+                 WHERE st.std_stat IN ('ATTENDING', 'ON_LEAVE')
                 """, new MapSqlParameterSource("semNo", semNo));
     }
 
