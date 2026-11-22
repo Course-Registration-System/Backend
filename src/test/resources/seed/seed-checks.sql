@@ -220,7 +220,7 @@ SELECT COUNT(*) FROM (
   WHERE s.yr = 2026 AND s.sem_type = 'SECOND' AND c.eval_type = 'GRADE' AND e.std_no = '20260001' AND e.enrl_stat = 'ENROLLED') x
 WHERE gpa IS NULL OR gpa <> 4.0;
 
--- CHECK 신청이 시작된 신청 대상 학기에 강의실 미배정 대면 수업(의도한 사례 1건) | T0:0, T1:1, T2:1
+-- CHECK 정정 기간이 시작된 학기에 강의실 미배정 대면 수업(ACA-03: 미배정은 정정 시작 전까지, 의도한 사례 1건) | T0:0, T1:0, T2:1
 SELECT COUNT(DISTINCT t.lec_no) FROM lecture_time_slot t JOIN lecture l USING (lec_no) JOIN semester s USING (sem_no)
 WHERE s.yr = 2027 AND s.sem_type = 'FIRST' AND l.lec_stat = 'OPEN' AND t.cls_type = 'OFFLINE' AND t.room_cd IS NULL
-  AND EXISTS (SELECT 1 FROM academic_schedule a WHERE a.sem_no = l.sem_no AND a.schd_type = 'ENROLL' AND a.start_dtm <= @now);
+  AND EXISTS (SELECT 1 FROM academic_schedule a WHERE a.sem_no = l.sem_no AND a.schd_type = 'ADJUST' AND a.start_dtm <= @now);
