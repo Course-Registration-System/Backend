@@ -3,7 +3,6 @@ package com.crs.backend.academic;
 import com.crs.backend.academic.dto.DashboardResponse.FullLecture;
 import com.crs.backend.academic.dto.DashboardResponse.MissingPlanLecture;
 import java.util.List;
-import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -76,10 +75,5 @@ public class DashboardRepository {
                         rs.getBoolean("no_plan_file"),
                         rs.getBoolean("no_weights")),
                 semNo);
-    }
-
-    public Optional<Integer> findCurrentSemester() {
-        return jdbc.queryForList("SELECT sem_no FROM semester WHERE cur_sem_yn = 'Y'", Integer.class).stream()
-                .findFirst();
     }
 }

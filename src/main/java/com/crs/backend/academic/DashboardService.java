@@ -13,13 +13,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class DashboardService {
 
     private final DashboardRepository repository;
-    private final SemesterRepository semesterRepository;
     private final SchedulePolicy schedulePolicy;
 
-    public DashboardService(
-            DashboardRepository repository, SemesterRepository semesterRepository, SchedulePolicy schedulePolicy) {
+    public DashboardService(DashboardRepository repository, SchedulePolicy schedulePolicy) {
         this.repository = repository;
-        this.semesterRepository = semesterRepository;
         this.schedulePolicy = schedulePolicy;
     }
 
@@ -29,27 +26,12 @@ public class DashboardService {
         if (!user.is(Role.ADMIN)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
-        int sem = semNo == null ? targetSemester() : checkedSemester(semNo);
+        int sem = schedulePolicy.semesterOrDefault(semNo);
         return new DashboardResponse(
                 sem,
                 repository.countOpenLectures(sem),
                 repository.findFullLectures(sem),
                 repository.countUnassignedLectures(sem),
                 repository.findMissingPlanLectures(sem));
-    }
-
-    // 학기를 비우면 신청 대상 학기(D24), 그것도 없으면(정정까지 끝남) 현재 학기
-    private int targetSemester() {
-        return schedulePolicy
-                .registrationSemester()
-                .or(repository::findCurrentSemester)
-                .orElseThrow(() -> new BusinessException(ErrorCode.SEMESTER_NOT_FOUND));
-    }
-
-    private int checkedSemester(int semNo) {
-        if (semesterRepository.findById(semNo).isEmpty()) {
-            throw new BusinessException(ErrorCode.SEMESTER_NOT_FOUND);
-        }
-        return semNo;
     }
 }
