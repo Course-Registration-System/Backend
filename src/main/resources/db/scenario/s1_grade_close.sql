@@ -6,12 +6,12 @@ SET NAMES utf8mb4;
 
 
 
-UPDATE grade SET mid_scr = 91, fin_scr = 91, hw_scr = 91, att_scr = 91, tot_scr = 91, ltr_grd = 'A-' WHERE std_no = '20260001' AND lec_no = 183 AND ltr_grd IS NULL;
+UPDATE grade SET mid_scr = 91, fin_scr = 91, hw_scr = 91, att_scr = 91, tot_scr = 91, ltr_grd = 'A-' WHERE std_no = '20260001' AND lec_no = 182 AND ltr_grd IS NULL;
 
 INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr, ltr_grd) VALUES
-  ('20240001', 157, 91, 91, 91, 91, 91, 'A-'),
-  ('20240003', 157, 77, 71, 77, 100, 77, 'C+'),
-  ('20240004', 157, 81, 91, 79, 99, 85, 'B0')
+  ('20240001', 158, 91, 91, 91, 91, 91, 'A-'),
+  ('20240003', 158, 89, 71, 80, 99, 81, 'B-'),
+  ('20240004', 158, 77, 77, 87, 96, 80, 'B-')
 ON DUPLICATE KEY UPDATE ltr_grd = ltr_grd;
 
 UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = '9001', cnfm_dtm = '2026-12-28 10:00:00' WHERE sem_no = 9 AND grd_stat <> 'CONFIRMED';

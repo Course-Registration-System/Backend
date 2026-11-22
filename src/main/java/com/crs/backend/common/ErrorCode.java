@@ -19,6 +19,13 @@ public enum ErrorCode {
     LECTURE_NOT_FOUND(HttpStatus.NOT_FOUND, "강의를 찾을 수 없습니다."),
     COURSE_NOT_FOUND(HttpStatus.NOT_FOUND, "과목을 찾을 수 없습니다."),
     SEMESTER_NOT_FOUND(HttpStatus.NOT_FOUND, "학기를 찾을 수 없습니다."),
+    // 학기·학사일정 (ACA-01)
+    DUPLICATE_SEMESTER(HttpStatus.CONFLICT, "이미 등록된 학기입니다."),
+    SEMESTER_IN_USE(HttpStatus.CONFLICT, "일정이 시작된 학기는 연도·학기구분을 바꿀 수 없습니다."),
+    SCHEDULE_NOT_FOUND(HttpStatus.NOT_FOUND, "학사일정을 찾을 수 없습니다."),
+    SCHEDULE_OVERLAP(HttpStatus.CONFLICT, "같은 일정유형·대상학년의 기간과 겹칩니다."),
+    SCHEDULE_ORDER(HttpStatus.CONFLICT, "일정은 장바구니 → 수강신청 → 정정 → 성적입력 순서여야 합니다."),
+    SCHEDULE_STARTED(HttpStatus.CONFLICT, "이미 시작된 일정은 삭제할 수 없습니다."),
     PROFESSOR_NOT_FOUND(HttpStatus.NOT_FOUND, "담당할 수 있는 교수가 아닙니다."),
     CLASSROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "강의실을 찾을 수 없습니다."),
     DUPLICATE_SECTION(HttpStatus.CONFLICT, "같은 학기·과목에 이미 있는 분반입니다."),
@@ -47,7 +54,14 @@ public enum ErrorCode {
     TIME_CONFLICT(HttpStatus.CONFLICT, "이미 신청한 강의와 시간이 겹칩니다."),
     CREDIT_EXCEEDED(HttpStatus.CONFLICT, "최대학점을 넘습니다."),
     PREREQUISITE_NOT_MET(HttpStatus.CONFLICT, "선수과목을 이수하지 않았습니다."),
-    ENROLLMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "신청한 강의가 아닙니다.");
+    ENROLLMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "신청한 강의가 아닙니다."),
+
+    // 과목 (ACA-02). 과목·학과가 없을 때는 위의 COURSE_NOT_FOUND·DEPARTMENT_NOT_FOUND 를 같이 씁니다
+    DUPLICATE_COURSE_CODE(HttpStatus.CONFLICT, "이미 등록된 과목코드입니다."),
+    INVALID_CHAPEL_COURSE(HttpStatus.CONFLICT, "채플은 0.5학점, P/F 과목이어야 합니다."),
+    PREREQUISITE_SELF(HttpStatus.CONFLICT, "자기 자신을 선수과목으로 지정할 수 없습니다."),
+    PREREQUISITE_CYCLE(HttpStatus.CONFLICT, "선수과목이 순환합니다."),
+    COURSE_IN_USE(HttpStatus.CONFLICT, "개설된 강의가 있는 과목은 과목명과 권장학년만 바꿀 수 있습니다.");
 
     private final HttpStatus status;
     private final String message;

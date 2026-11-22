@@ -3,11 +3,11 @@
 -- 각 문장 위의 "기대" 줄은 DemoScriptTest 가 확인한다(성공 = 바뀐 행이 1개 이상).
 
 -- 기대: 성공
--- [정원] 한 자리 남은 198번 강의를 마감시킨다 → 학생 화면에서 신청이 막힌다
-UPDATE lecture SET cap = enrl_cnt WHERE lec_no = 198;
+-- [정원] 한 자리 남은 197번 강의를 마감시킨다 → 학생 화면에서 신청이 막힌다
+UPDATE lecture SET cap = enrl_cnt WHERE lec_no = 197;
 
 -- 기대: 성공
-SELECT lec_no, cap, enrl_cnt, cap - enrl_cnt AS 잔여 FROM lecture WHERE lec_no = 198;
+SELECT lec_no, cap, enrl_cnt, cap - enrl_cnt AS 잔여 FROM lecture WHERE lec_no = 197;
 
 -- 기대: 성공
 -- [최대학점] 시연 학생의 2027-1 최대학점을 21 → 18로 바꾼다 → 21학점 신청이 막힌다
