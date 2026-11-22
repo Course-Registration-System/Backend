@@ -4,7 +4,7 @@
 
 -- 기대: 거부 PRIMARY
 -- 같은 학생이 같은 강의를 두 번 신청
-INSERT INTO enrollment (std_no, lec_no, enrl_dtm) VALUES ('20240001', 158, '2027-02-11 10:05:00');
+INSERT INTO enrollment (std_no, lec_no, enrl_dtm) VALUES ('20240001', 159, '2027-02-11 10:05:00');
 
 -- 기대: 거부 uk_semester_current
 -- 현재 학기가 둘
@@ -12,7 +12,7 @@ UPDATE semester SET cur_sem_yn = 'Y' WHERE sem_no = 11;
 
 -- 기대: 거부 ck_grade_mid_scr
 -- 점수 101
-UPDATE grade SET mid_scr = 101 WHERE std_no = '20240001' AND lec_no = 158;
+UPDATE grade SET mid_scr = 101 WHERE std_no = '20240001' AND lec_no = 159;
 
 -- 기대: 거부 ck_grade_pf_no_score
 -- P/F 과목(사회봉사)에 점수 입력
@@ -24,15 +24,15 @@ UPDATE course SET crdt = 5 WHERE crs_cd = '1010014';
 
 -- 기대: 거부 ck_lecture_weight_sum
 -- 평가 반영비율 합이 100이 아님
-UPDATE lecture SET att_wt = att_wt - 10 WHERE lec_no = 183;
+UPDATE lecture SET att_wt = att_wt - 10 WHERE lec_no = 182;
 
 -- 기대: 거부 ck_lecture_time_slot_online_no_room
 -- 온라인 수업에 강의실 지정
-UPDATE lecture_time_slot SET room_cd = '21301' WHERE lec_no = 222;
+UPDATE lecture_time_slot SET room_cd = '21301' WHERE lec_no = 221;
 
 -- 기대: 거부 fk_lecture_time_slot_classroom
 -- 등록되지 않은 강의실
-UPDATE lecture_time_slot SET room_cd = '99999' WHERE lec_no = 225;
+UPDATE lecture_time_slot SET room_cd = '99999' WHERE lec_no = 224;
 
 -- 기대: 거부 ck_semester_maximum_credit_max_crdt_value
 -- 최대학점 20 (정규 18·21, 계절 6·3만 허용)
