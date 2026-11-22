@@ -36,16 +36,7 @@ public class TimetableService {
         int sem = schedulePolicy.semesterOrDefault(semNo);
 
         List<EnrollmentResponse> lectures = enrollmentRepository.findEnrolled(stdNo, sem);
-        BigDecimal total = sum(lectures, false);
-        BigDecimal credits = sum(lectures, true);
-        return new TimetableResponse(sem, lectures, total, credits, schedulePolicy.maxCredit(stdNo, sem));
-    }
-
-    // 채플은 총 신청 학점에는 넣고, 최대학점과 비교하는 학점에서는 뺀다(D8)
-    private static BigDecimal sum(List<EnrollmentResponse> lectures, boolean withoutChapel) {
-        return lectures.stream()
-                .filter(lecture -> !(withoutChapel && "CHAPEL".equals(lecture.cmplType())))
-                .map(EnrollmentResponse::crdt)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal total = lectures.stream().map(EnrollmentResponse::crdt).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new TimetableResponse(sem, lectures, total);
     }
 }

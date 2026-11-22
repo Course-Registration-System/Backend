@@ -77,7 +77,7 @@ class TimetableControllerTest extends IntegrationTest {
         TestClock.at(clock, TestClock.CART); // 현재 학기는 2026-2
         timetable(Student.DEMO, Role.STUDENT, "")
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.semNo").value(11));
+                .andExpect(jsonPath("$.semNo").value(Semester.Y2027_FIRST));
     }
 
     @Test
@@ -87,7 +87,7 @@ class TimetableControllerTest extends IntegrationTest {
     }
 
     @Test
-    void 취소한_강의와_폐강_처리한_강의는_빼고_채플은_총_학점에만_넣는다() throws Exception {
+    void 취소한_강의와_폐강_처리한_강의는_빼고_채플은_총_학점에_넣는다() throws Exception {
         // T0 에 시연 학생은 2027-1 신청이 없다. 온라인 교양(3학점)과 채플(0.5학점)만 남아야 한다
         enroll(Student.DEMO, Lecture.ONLINE, "ENROLLED");
         enroll(Student.DEMO, chapel, "ENROLLED");
@@ -100,9 +100,7 @@ class TimetableControllerTest extends IntegrationTest {
         timetable(Student.DEMO, Role.STUDENT, "?semNo=11")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lectures[*].lecNo", containsInAnyOrder(Lecture.ONLINE, chapel)))
-                .andExpect(jsonPath("$.totalCredits").value(3.5))
-                .andExpect(jsonPath("$.credits").value(3.0))
-                .andExpect(jsonPath("$.maxCredit").value(18));
+                .andExpect(jsonPath("$.totalCredits").value(3.5));
     }
 
     @Test
