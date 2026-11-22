@@ -6,15 +6,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.crs.backend.common.SettableClock;
 import com.crs.backend.common.auth.JwtProvider;
 import com.crs.backend.common.auth.Role;
 import com.crs.backend.support.Bearer;
-import com.crs.backend.support.FakeSchedulePolicy;
 import com.crs.backend.support.IntegrationTest;
 import com.crs.backend.support.SeedFixtures.Account;
 import com.crs.backend.support.SeedFixtures.Lecture;
 import com.crs.backend.support.SeedFixtures.Semester;
 import com.crs.backend.support.SeedFixtures.Student;
+import com.crs.backend.support.TestClock;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,7 +40,7 @@ class TimetableControllerTest extends IntegrationTest {
     JdbcTemplate jdbc;
 
     @Autowired
-    FakeSchedulePolicy schedulePolicy;
+    SettableClock clock;
 
     /** 2027-1 채플(0.5학점, P/F). 시드를 다시 만들면 번호가 바뀌어서 이수구분으로 찾는다 */
     int chapel;
@@ -54,7 +55,7 @@ class TimetableControllerTest extends IntegrationTest {
 
     @AfterEach
     void tearDown() {
-        schedulePolicy.reset();
+        TestClock.reset(clock);
     }
 
     private ResultActions timetable(String usrNo, Role role, String query) throws Exception {
@@ -73,7 +74,7 @@ class TimetableControllerTest extends IntegrationTest {
 
     @Test
     void 학기를_비우면_신청_대상_학기를_본다() throws Exception {
-        schedulePolicy.at(Semester.Y2027_FIRST, false);
+        TestClock.at(clock, "2027-01-05T10:00:00"); // 2027-1 장바구니 전, 현재 학기는 2026-2
         timetable(Student.DEMO, Role.STUDENT, "")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.semNo").value(11));
@@ -81,6 +82,7 @@ class TimetableControllerTest extends IntegrationTest {
 
     @Test
     void 신청_대상_학기가_없으면_현재_학기를_본다() throws Exception {
+        TestClock.at(clock, "2027-03-09T17:00:00"); // 2027-1 정정이 끝난 순간
         timetable(Student.DEMO, Role.STUDENT, "").andExpect(jsonPath("$.semNo").value(Semester.Y2026_SECOND));
     }
 
