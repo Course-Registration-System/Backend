@@ -78,11 +78,6 @@ public class DashboardRepository {
                 semNo);
     }
 
-    public boolean semesterExists(int semNo) {
-        return Boolean.TRUE.equals(
-                jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM semester WHERE sem_no = ?)", Boolean.class, semNo));
-    }
-
     public Optional<Integer> findCurrentSemester() {
         return jdbc.queryForList("SELECT sem_no FROM semester WHERE cur_sem_yn = 'Y'", Integer.class).stream()
                 .findFirst();

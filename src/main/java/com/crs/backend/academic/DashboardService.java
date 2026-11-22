@@ -13,10 +13,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class DashboardService {
 
     private final DashboardRepository repository;
+    private final SemesterRepository semesterRepository;
     private final SchedulePolicy schedulePolicy;
 
-    public DashboardService(DashboardRepository repository, SchedulePolicy schedulePolicy) {
+    public DashboardService(
+            DashboardRepository repository, SemesterRepository semesterRepository, SchedulePolicy schedulePolicy) {
         this.repository = repository;
+        this.semesterRepository = semesterRepository;
         this.schedulePolicy = schedulePolicy;
     }
 
@@ -44,7 +47,7 @@ public class DashboardService {
     }
 
     private int checkedSemester(int semNo) {
-        if (!repository.semesterExists(semNo)) {
+        if (semesterRepository.findById(semNo).isEmpty()) {
             throw new BusinessException(ErrorCode.SEMESTER_NOT_FOUND);
         }
         return semNo;
