@@ -9,6 +9,7 @@ import com.crs.backend.enrollment.EnrollmentRepository.LectureInfo;
 import com.crs.backend.enrollment.EnrollmentRepository.Prerequisite;
 import com.crs.backend.enrollment.EnrollmentRepository.StudentState;
 import com.crs.backend.enrollment.dto.EnrollmentResponse;
+import com.crs.backend.enrollment.dto.EnrollmentStatusResponse;
 import com.crs.backend.grade.GradeQuery;
 import com.crs.backend.lecture.LecStat;
 import java.math.BigDecimal;
@@ -19,7 +20,13 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 수강신청·취소(REG-03). 처리 내용 ②~⑪ 순서로 검사하고, 하나라도 걸리면 그 사유로 막습니다. */
+/**
+ * 수강신청·취소(REG-03)와 관리자 신청 현황 관리(REG-05). 학생 신청과 관리자 추가는 같은 검사를 거치고, 관리자는 정원이 찬 강의에도
+ * 정원을 늘려 넣을 수 있습니다.
+ *
+ * <p>학생 → 강의 순으로 잠근 뒤 검사합니다. 학생 잠금이 트랜잭션의 첫 읽기여야 합니다. MySQL(REPEATABLE READ)은 첫 일반 읽기 시점의
+ * 스냅숏을 끝까지 쓰므로, 잠금 전에 다른 것을 읽으면 같은 학생의 다른 신청이 방금 넣은 기록을 못 보고 시간·학점 검사가 통과될 수 있습니다.
+ */
 @Service
 public class EnrollmentService {
 
@@ -30,42 +37,111 @@ public class EnrollmentService {
     private static final int MAX_RETAKE_COURSES = 10;
 
     private final EnrollmentRepository enrollmentRepository;
+    private final CartRepository cartRepository;
     private final SchedulePolicy schedulePolicy;
     private final GradeQuery gradeQuery;
     private final Clock clock;
 
     public EnrollmentService(
             EnrollmentRepository enrollmentRepository,
+            CartRepository cartRepository,
             SchedulePolicy schedulePolicy,
             GradeQuery gradeQuery,
             Clock clock) {
         this.enrollmentRepository = enrollmentRepository;
+        this.cartRepository = cartRepository;
         this.schedulePolicy = schedulePolicy;
         this.gradeQuery = gradeQuery;
         this.clock = clock;
     }
 
+    // ---- 학생(REG-03)
+
     public List<EnrollmentResponse> list(CurrentUser user) {
         return enrollmentRepository.findEnrolled(requireStudent(user), registrationSemester());
     }
 
-    // 신청. 학생 → 강의 순으로 잠근 뒤 검사한다.
-    // 학생 잠금이 트랜잭션의 첫 읽기여야 한다. MySQL(REPEATABLE READ)은 첫 일반 읽기 시점의 스냅숏을 끝까지 쓰므로,
-    // 잠금 전에 다른 것을 읽으면 같은 학생의 다른 신청이 방금 넣은 기록을 못 보고 시간·학점 검사가 통과될 수 있다
     @Transactional
     public EnrollmentResponse enroll(CurrentUser user, int lecNo) {
         String stdNo = requireStudent(user);
-        StudentState student = lockStudent(stdNo);
+        StudentState student = lockStudent(stdNo, ErrorCode.FORBIDDEN);
         int semNo = registrationSemester();
-        checkEnrollOpen(semNo, student);
-        StudentStatusRule.check(student.stdStat(), enrollmentRepository.isSeasonal(semNo));
-
-        LectureInfo lecture = enrollmentRepository
-                .lockLecture(lecNo)
-                .orElseThrow(() -> new BusinessException(ErrorCode.LECTURE_NOT_FOUND));
+        checkStudentPeriod(semNo, student);
+        LectureInfo lecture = lockLecture(lecNo);
         if (lecture.semNo() != semNo) {
             throw new BusinessException(ErrorCode.OTHER_SEMESTER_LECTURE);
         }
+        register(stdNo, student, lecNo, lecture, ProcType.STUDENT);
+        return enrollmentRepository.findEnrolled(stdNo, semNo).stream()
+                .filter(enrollment -> enrollment.lecNo() == lecNo)
+                .findFirst()
+                .orElseThrow();
+    }
+
+    // ⑪ 취소
+    @Transactional
+    public void cancel(CurrentUser user, int lecNo) {
+        String stdNo = requireStudent(user);
+        StudentState student = lockStudent(stdNo, ErrorCode.FORBIDDEN);
+        int semNo = registrationSemester();
+        checkStudentPeriod(semNo, student);
+        LectureInfo lecture = lockLecture(lecNo);
+        if (lecture.semNo() != semNo) {
+            throw new BusinessException(ErrorCode.ENROLLMENT_NOT_FOUND);
+        }
+        unregister(stdNo, lecNo, ProcType.STUDENT);
+    }
+
+    // ---- 관리자(REG-05)
+
+    // ①② 강의별 현황. 정정 기간이 끝나도 조회는 된다
+    public EnrollmentStatusResponse status(int lecNo) {
+        LectureInfo lecture = enrollmentRepository
+                .findLecture(lecNo)
+                .orElseThrow(() -> new BusinessException(ErrorCode.LECTURE_NOT_FOUND));
+        return new EnrollmentStatusResponse(
+                lecNo,
+                lecture.cap(),
+                lecture.enrlCnt(),
+                Math.max(lecture.cap() - lecture.enrlCnt(), 0),
+                enrollmentRepository.findStudents(lecNo));
+    }
+
+    // ③~⑤ 관리자 추가. 학생 신청과 같은 검사를 거치고, 정원이 차 있으면 정원을 1 늘려 넣는다
+    @Transactional
+    public void addByAdmin(int lecNo, String stdNo) {
+        StudentState student = lockStudent(stdNo, ErrorCode.USER_NOT_FOUND);
+        LectureInfo lecture = lockLecture(lecNo);
+        checkAdminPeriod(lecture.semNo());
+        register(stdNo, student, lecNo, lecture, ProcType.ADMIN);
+    }
+
+    // ⑥ 관리자 취소
+    @Transactional
+    public void cancelByAdmin(int lecNo, String stdNo) {
+        lockStudent(stdNo, ErrorCode.USER_NOT_FOUND);
+        LectureInfo lecture = lockLecture(lecNo);
+        checkAdminPeriod(lecture.semNo());
+        unregister(stdNo, lecNo, ProcType.ADMIN);
+    }
+
+    // ---- 폐강(ACA-03)
+
+    /**
+     * 폐강한 강의의 신청을 모두 관리자 처리로 취소하고 장바구니에서도 뺍니다. 강의 개설 관리가 강의 행을 잠근 트랜잭션 안에서 부릅니다.
+     */
+    @Transactional
+    public void clearClosedLecture(int lecNo, LocalDateTime now) {
+        enrollmentRepository.cancelAll(lecNo, now);
+        cartRepository.deleteByLecture(lecNo);
+    }
+
+    // ---- 공통 검사와 저장
+
+    /** 처리 내용 ②~⑨. 학생과 강의를 잠근 뒤 부릅니다. 정원이 찼을 때 학생은 막고, 관리자는 정원을 늘립니다. */
+    private void register(String stdNo, StudentState student, int lecNo, LectureInfo lecture, ProcType procType) {
+        int semNo = lecture.semNo();
+        StudentStatusRule.check(student.stdStat(), enrollmentRepository.isSeasonal(semNo));
         if (lecture.lecStat() == LecStat.CLOSED) {
             throw new BusinessException(ErrorCode.LECTURE_CLOSED);
         }
@@ -74,7 +150,8 @@ public class EnrollmentService {
             throw new BusinessException(ErrorCode.ALREADY_ENROLLED_COURSE);
         }
         boolean retake = checkRetake(stdNo, lecture); // ④
-        if (lecture.enrlCnt() >= lecture.cap()) { // ⑤
+        boolean full = lecture.enrlCnt() >= lecture.cap(); // ⑤
+        if (full && procType == ProcType.STUDENT) {
             throw new BusinessException(ErrorCode.LECTURE_FULL);
         }
         enrollmentRepository
@@ -89,28 +166,18 @@ public class EnrollmentService {
         // ⑨ 저장. 취소한 기록이 있으면 새로 만들지 않고 되살린다
         LocalDateTime now = LocalDateTime.now(clock);
         if (enrollmentRepository.findEnrlStat(stdNo, lecNo).isPresent()) {
-            enrollmentRepository.revive(stdNo, lecNo, retake, now);
+            enrollmentRepository.revive(stdNo, lecNo, retake, procType, now);
         } else {
-            enrollmentRepository.insert(stdNo, lecNo, retake, now);
+            enrollmentRepository.insert(stdNo, lecNo, retake, procType, now);
+        }
+        if (full) {
+            enrollmentRepository.raiseCapForOneMore(lecNo);
         }
         enrollmentRepository.addEnrlCnt(lecNo, 1);
-        return enrollmentRepository.findEnrolled(stdNo, semNo).stream()
-                .filter(enrollment -> enrollment.lecNo() == lecNo)
-                .findFirst()
-                .orElseThrow();
     }
 
-    // ⑪ 취소. 신청과 같은 순서로 잠근다
-    @Transactional
-    public void cancel(CurrentUser user, int lecNo) {
-        String stdNo = requireStudent(user);
-        StudentState student = lockStudent(stdNo);
-        int semNo = registrationSemester();
-        checkEnrollOpen(semNo, student);
-        LectureInfo lecture = enrollmentRepository
-                .lockLecture(lecNo)
-                .orElseThrow(() -> new BusinessException(ErrorCode.LECTURE_NOT_FOUND));
-        if (lecture.semNo() != semNo || enrollmentRepository.cancel(stdNo, lecNo, LocalDateTime.now(clock)) == 0) {
+    private void unregister(String stdNo, int lecNo, ProcType procType) {
+        if (enrollmentRepository.cancel(stdNo, lecNo, procType, LocalDateTime.now(clock)) == 0) {
             throw new BusinessException(ErrorCode.ENROLLMENT_NOT_FOUND);
         }
         enrollmentRepository.addEnrlCnt(lecNo, -1);
@@ -172,6 +239,8 @@ public class EnrollmentService {
         return GRADE_ORDER.indexOf(grade);
     }
 
+    // ---- 기간·대상
+
     private String requireStudent(CurrentUser user) {
         if (!user.is(Role.STUDENT)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
@@ -185,12 +254,33 @@ public class EnrollmentService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NO_REGISTRATION_SEMESTER));
     }
 
-    private StudentState lockStudent(String stdNo) {
-        return enrollmentRepository.lockStudent(stdNo).orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN));
+    private StudentState lockStudent(String stdNo, ErrorCode notFound) {
+        return enrollmentRepository.lockStudent(stdNo).orElseThrow(() -> new BusinessException(notFound));
     }
 
-    private void checkEnrollOpen(int semNo, StudentState student) {
+    private LectureInfo lockLecture(int lecNo) {
+        return enrollmentRepository
+                .lockLecture(lecNo)
+                .orElseThrow(() -> new BusinessException(ErrorCode.LECTURE_NOT_FOUND));
+    }
+
+    /** 학생은 본인 학년 수강신청일, 전체 수강신청일, 정정 기간에만 신청·취소합니다. */
+    private void checkStudentPeriod(int semNo, StudentState student) {
         if (!schedulePolicy.enrollOpen(semNo, student.yrLvl())) {
+            throw new BusinessException(ErrorCode.ENROLL_CLOSED);
+        }
+    }
+
+    /** 관리자는 학년과 상관없이 첫 수강신청일부터 정정 기간 종료 전까지 추가·취소합니다. */
+    private void checkAdminPeriod(int semNo) {
+        LocalDateTime now = LocalDateTime.now(clock);
+        boolean started = schedulePolicy
+                .enrollStart(semNo)
+                .map(start -> !now.isBefore(start))
+                .orElse(false);
+        boolean over =
+                schedulePolicy.adjustEnd(semNo).map(end -> !now.isBefore(end)).orElse(false);
+        if (!started || over) {
             throw new BusinessException(ErrorCode.ENROLL_CLOSED);
         }
     }
