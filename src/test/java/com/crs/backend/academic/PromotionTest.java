@@ -59,6 +59,7 @@ class PromotionTest extends IntegrationTest {
 
     @Test
     void 채플이_5학기면_졸업하지_않고_4학년_재학으로_남는다() {
+        // 졸업 요건을 못 채우면 추가학기를 다닌다: 재학을 유지하고 다음 정규학기 최대학점을 받는다
         History s = graduateCandidate("29990001", 5);
 
         maxCreditService.calculate(Semester.Y2027_FIRST);
@@ -66,6 +67,18 @@ class PromotionTest extends IntegrationTest {
         assertThat(s.status()).isEqualTo("ATTENDING");
         assertThat(s.yearLevel()).isEqualTo(4);
         assertThat(s.maxCredit()).isNotNull();
+    }
+
+    @Test
+    void 겨울학기_학점도_졸업_이수_학점에_넣는다() {
+        // 정규학기 128학점 + 겨울 2학점 = 130학점, 채플 P 6학기
+        History s = regularSemesters("29990001", 8, "A0");
+        chapels(s, 6);
+        s.take(WINTER, "2.0", "GEN_ELEC", "GRADE", "A0");
+
+        maxCreditService.calculate(Semester.Y2027_FIRST);
+
+        assertThat(s.status()).isEqualTo("GRADUATED");
     }
 
     @Test
