@@ -6,15 +6,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.crs.backend.common.ClockConfig;
+import com.crs.backend.common.SettableClock;
 import com.crs.backend.common.auth.JwtProvider;
 import com.crs.backend.common.auth.Role;
 import com.crs.backend.support.Bearer;
-import com.crs.backend.support.FakeSchedulePolicy;
 import com.crs.backend.support.IntegrationTest;
 import com.crs.backend.support.SeedFixtures.Lecture;
 import com.crs.backend.support.SeedFixtures.Semester;
 import com.crs.backend.support.SeedFixtures.Student;
 import com.crs.backend.support.SeedTime;
+import java.time.LocalDateTime;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -39,11 +41,15 @@ class LectureSearchControllerTest extends IntegrationTest {
     DataSource dataSource;
 
     @Autowired
-    FakeSchedulePolicy schedulePolicy;
+    SettableClock clock;
 
     @AfterEach
-    void tearDown() {
-        schedulePolicy.reset();
+    void resetClock() {
+        at(SeedTime.T0);
+    }
+
+    private void at(String time) {
+        clock.fixAt(LocalDateTime.parse(time).atZone(ClockConfig.ZONE).toInstant());
     }
 
     private ResultActions search(String query) throws Exception {
@@ -112,12 +118,13 @@ class LectureSearchControllerTest extends IntegrationTest {
 
     @Test
     void 학기를_비우면_신청_대상_학기를_찾는다() throws Exception {
-        schedulePolicy.at(Semester.Y2027_FIRST, false);
+        at("2027-01-05T10:00:00"); // 2027-1 장바구니 전, 현재 학기는 2026-2
         search("").andExpect(jsonPath("$.semNo").value(Semester.Y2027_FIRST));
     }
 
     @Test
     void 신청_대상_학기가_없으면_현재_학기를_찾는다() throws Exception {
+        at("2027-03-09T17:00:00"); // 2027-1 정정이 끝난 순간
         search("").andExpect(jsonPath("$.semNo").value(Semester.Y2026_SECOND));
     }
 
