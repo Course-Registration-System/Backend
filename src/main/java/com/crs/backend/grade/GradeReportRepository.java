@@ -1,6 +1,5 @@
 package com.crs.backend.grade;
 
-import com.crs.backend.academic.MaxCreditRepository;
 import com.crs.backend.grade.dto.GradeRow;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,8 +13,7 @@ public class GradeReportRepository {
     public record Row(int semNo, int yr, String semType, GradeRow grade) {}
 
     // 같은 과목을 여러 번 들었으면 가장 최근 시도만 counted = 1. 채플은 학기마다 따로 이수하므로 언제나 1
-    private static final String SQL =
-            """
+    private static final String SQL = """
             SELECT s.sem_no, s.yr, s.sem_type, l.lec_no, l.crs_cd, c.crs_nm, c.crdt, c.cmpl_type, c.eval_type,
                    g.ltr_grd, e.retake_yn,
                    CASE WHEN c.eval_type = 'GRADE' THEN %s END AS grade_point,
@@ -32,7 +30,7 @@ public class GradeReportRepository {
                AND l.grd_stat = 'CONFIRMED'
                AND g.ltr_grd IS NOT NULL
              ORDER BY %s, c.crs_nm, l.sect_no
-            """.formatted(GradePoint.sql("g.ltr_grd"), MaxCreditRepository.SEM_ORD, MaxCreditRepository.SEM_ORD);
+            """.formatted(GradePoint.sql("g.ltr_grd"), SemesterOrder.SQL, SemesterOrder.SQL);
 
     private final JdbcTemplate jdbc;
 
