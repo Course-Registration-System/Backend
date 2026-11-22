@@ -1,7 +1,6 @@
 package com.crs.backend.enrollment;
 
-import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -15,7 +14,6 @@ import com.crs.backend.support.SeedFixtures.Account;
 import com.crs.backend.support.SeedFixtures.Lecture;
 import com.crs.backend.support.SeedFixtures.Semester;
 import com.crs.backend.support.SeedFixtures.Student;
-import java.math.BigDecimal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @Transactional
 class TimetableControllerTest extends IntegrationTest {
+
+    /** 2027-1 채플(0.5학점, P/F) */
+    private static final int CHAPEL = 211;
 
     @Autowired
     MockMvc mvc;
@@ -60,15 +61,6 @@ class TimetableControllerTest extends IntegrationTest {
                 """, stdNo, lecNo, enrlStat, enrlStat);
     }
 
-    private int firstLecture(String where) {
-        return jdbc.queryForObject("""
-                SELECT l.lec_no FROM lecture l JOIN course c ON c.crs_cd = l.crs_cd
-                 WHERE l.sem_no = ? AND l.lec_stat = 'OPEN' AND %s
-                   AND l.lec_no NOT IN (SELECT lec_no FROM enrollment WHERE std_no = ?)
-                 ORDER BY l.lec_no LIMIT 1
-                """.formatted(where), Integer.class, Semester.Y2027_FIRST, Student.DEMO);
-    }
-
     @Test
     void 학기를_비우면_신청_대상_학기를_본다() throws Exception {
         schedulePolicy.at(Semester.Y2027_FIRST, false);
@@ -84,31 +76,17 @@ class TimetableControllerTest extends IntegrationTest {
 
     @Test
     void 취소와_폐강은_빼고_채플은_총_학점에만_넣는다() throws Exception {
-        int chapel = firstLecture("c.cmpl_type = 'CHAPEL'");
-        int cancelled = firstLecture("c.cmpl_type <> 'CHAPEL' AND l.lec_no <> " + Lecture.ONLINE);
+        // T0 에 시연 학생은 2027-1 신청이 없다. 온라인 교양(3학점)과 채플(0.5학점)만 남아야 한다
         enroll(Student.DEMO, Lecture.ONLINE, "ENROLLED");
-        enroll(Student.DEMO, chapel, "ENROLLED");
-        enroll(Student.DEMO, cancelled, "CANCELLED");
+        enroll(Student.DEMO, CHAPEL, "ENROLLED");
+        enroll(Student.DEMO, Lecture.ONE_SEAT_LEFT, "CANCELLED");
         enroll(Student.DEMO, Lecture.CLOSED, "ENROLLED");
-
-        BigDecimal total = jdbc.queryForObject("""
-                SELECT SUM(c.crdt) FROM enrollment e JOIN lecture l ON l.lec_no = e.lec_no JOIN course c ON c.crs_cd = l.crs_cd
-                 WHERE e.std_no = ? AND e.enrl_stat = 'ENROLLED' AND l.sem_no = ? AND l.lec_stat = 'OPEN'
-                """, BigDecimal.class, Student.DEMO, Semester.Y2027_FIRST);
-        BigDecimal chapelCrdt = jdbc.queryForObject(
-                "SELECT c.crdt FROM lecture l JOIN course c ON c.crs_cd = l.crs_cd WHERE l.lec_no = ?",
-                BigDecimal.class,
-                chapel);
 
         timetable(Student.DEMO, Role.STUDENT, "?semNo=11")
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.lectures[*].lecNo", hasItem(Lecture.ONLINE)))
-                .andExpect(jsonPath("$.lectures[*].lecNo", hasItem(chapel)))
-                .andExpect(jsonPath("$.lectures[*].lecNo", not(hasItem(cancelled))))
-                .andExpect(jsonPath("$.lectures[*].lecNo", not(hasItem(Lecture.CLOSED))))
-                .andExpect(jsonPath("$.totalCredits").value(total.doubleValue()))
-                .andExpect(
-                        jsonPath("$.credits").value(total.subtract(chapelCrdt).doubleValue()))
+                .andExpect(jsonPath("$.lectures[*].lecNo", containsInAnyOrder(Lecture.ONLINE, CHAPEL)))
+                .andExpect(jsonPath("$.totalCredits").value(3.5))
+                .andExpect(jsonPath("$.credits").value(3.0))
                 .andExpect(jsonPath("$.maxCredit").value(18));
     }
 
