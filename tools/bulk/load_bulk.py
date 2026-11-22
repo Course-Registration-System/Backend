@@ -26,8 +26,6 @@ SEED_CHECKS = REPO / "src/test/resources/seed/seed-checks.sql"
 # 시드 사례 전용 검사. 이름이 바뀌면(예: #20 이 채플 예외를 넣으면) 다시 돈다
 SEED_ONLY = {
     "2026-2 평점: 20240001은 정확히 4.0, 20240002는 4.0 미만",
-    # #20 전 버전은 학기마다 듣는 채플을 재수강 표시 누락으로 센다. 대량 데이터는 채플을 학기마다 넣는다(D28)
-    "재수강 조건(이전 확정 성적 C+ 이하, P/F는 F) 위반 또는 재수강 표시 누락",
 }
 REMOTE_DIR = "/var/lib/mysql-files/bulk"
 
