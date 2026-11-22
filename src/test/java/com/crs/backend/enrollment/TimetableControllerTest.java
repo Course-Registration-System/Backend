@@ -2,6 +2,7 @@ package com.crs.backend.enrollment;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -84,12 +85,15 @@ class TimetableControllerTest extends IntegrationTest {
     }
 
     @Test
-    void 취소와_폐강은_빼고_채플은_총_학점에만_넣는다() throws Exception {
+    void 취소한_강의와_폐강_처리한_강의는_빼고_채플은_총_학점에만_넣는다() throws Exception {
         // T0 에 시연 학생은 2027-1 신청이 없다. 온라인 교양(3학점)과 채플(0.5학점)만 남아야 한다
         enroll(Student.DEMO, Lecture.ONLINE, "ENROLLED");
         enroll(Student.DEMO, chapel, "ENROLLED");
         enroll(Student.DEMO, Lecture.ONE_SEAT_LEFT, "CANCELLED");
-        enroll(Student.DEMO, Lecture.CLOSED, "ENROLLED");
+        enroll(Student.DEMO, Lecture.FULL, "ENROLLED");
+        mvc.perform(patch("/api/admin/lectures/" + Lecture.FULL + "/close")
+                        .header("Authorization", Bearer.of(jwtProvider, Account.ADMIN, Role.ADMIN)))
+                .andExpect(status().isOk());
 
         timetable(Student.DEMO, Role.STUDENT, "?semNo=11")
                 .andExpect(status().isOk())
