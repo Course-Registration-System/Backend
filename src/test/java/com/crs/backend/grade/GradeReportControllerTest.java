@@ -21,6 +21,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +41,9 @@ class GradeReportControllerTest extends IntegrationTest {
 
     @Autowired
     DemoService demoService;
+
+    @Autowired
+    JdbcTemplate jdbc;
 
     private ResultActions grades(String stdNo) throws Exception {
         return mvc.perform(get("/api/me/grades").header("Authorization", Bearer.of(jwtProvider, stdNo, Role.STUDENT)));
@@ -116,6 +120,30 @@ class GradeReportControllerTest extends IntegrationTest {
         List<String> semTypes = JsonPath.read(body, "$.semesters[*].semType");
         assertThat(semNos).containsExactly(7, 8, Semester.Y2026_SECOND, Semester.Y2026_WINTER);
         assertThat(semTypes).containsExactly("FIRST", "SUMMER", "SECOND", "WINTER");
+    }
+
+    @Test
+    void 학기_번호가_커도_시점이_이른_학기는_시간_순서_자리에_나온다() throws Exception {
+        // 나중에 넣은 2025 겨울은 sem_no 가 가장 크지만 2026-1 보다 앞이다. T0 에 시연 학생의 확정 학기는 2026-1, 2026 여름
+        jdbc.update("INSERT INTO semester (yr, sem_type) VALUES (2025, 'WINTER')");
+        int winter2025 = jdbc.queryForObject(
+                "SELECT sem_no FROM semester WHERE yr = 2025 AND sem_type = 'WINTER'", Integer.class);
+        jdbc.update("INSERT INTO course (crs_cd, dept_no, crs_nm, crdt, cmpl_type, eval_type)"
+                + " VALUES ('Z90001', 101, '테스트계절과목', 3.0, 'GEN_ELEC', 'GRADE')");
+        jdbc.update(
+                "INSERT INTO lecture (crs_cd, sem_no, prof_no, sect_no, cap, grd_stat, cnfm_emp_no, cnfm_dtm)"
+                        + " VALUES ('Z90001', ?, ?, 1, 50, 'CONFIRMED', ?, '2026-01-20 10:00:00')",
+                winter2025,
+                Account.DEMO_PROFESSOR,
+                Account.ADMIN);
+        int lecNo = jdbc.queryForObject("SELECT lec_no FROM lecture WHERE crs_cd = 'Z90001'", Integer.class);
+        jdbc.update("INSERT INTO enrollment (std_no, lec_no) VALUES (?, ?)", Student.DEMO, lecNo);
+        jdbc.update("INSERT INTO grade (std_no, lec_no, ltr_grd) VALUES (?, ?, 'A0')", Student.DEMO, lecNo);
+
+        String body = grades(Student.DEMO).andReturn().getResponse().getContentAsString();
+        List<Integer> semNos = JsonPath.read(body, "$.semesters[*].semNo");
+        assertThat(winter2025).isGreaterThan(Semester.Y2027_FIRST);
+        assertThat(semNos).containsExactly(winter2025, 7, 8);
     }
 
     @Test
