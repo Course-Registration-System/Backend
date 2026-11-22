@@ -20,7 +20,7 @@ public class LectureSearchController {
     /**
      * 예: /api/lectures?deptNo=101&yrLvl=2&cmplType=MAJOR_REQ&crsNm=자료&profNm=김&page=0&size=20
      *
-     * <p>semNo 를 비우면 신청 대상 학기입니다. 학년 조건에서 권장학년이 없는 과목(교양·채플 등)은 모든 학년에 나옵니다.
+     * <p>semNo 를 비우면 신청 대상 학기, 신청 대상 학기가 없으면 현재 학기입니다. 없는 학기는 404 입니다. 학년 조건에서 권장학년이 없는 과목(교양·채플 등)은 모든 학년에 나옵니다.
      */
     @GetMapping
     public LectureSearchResponse search(

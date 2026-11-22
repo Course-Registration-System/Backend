@@ -55,7 +55,7 @@ public class LectureSearchService {
         }
 
         var condition = new LectureSearchCondition(
-                semNo == null ? targetSemester() : semNo, deptNo, yrLvl, type, blankToNull(crsNm), blankToNull(profNm));
+                schedulePolicy.semesterOrDefault(semNo), deptNo, yrLvl, type, blankToNull(crsNm), blankToNull(profNm));
         long total = repository.count(condition);
         List<LectureRow> rows = repository.findPage(condition, pageNo, pageSize);
         Map<Integer, List<LectureSearchSlot>> slots =
@@ -64,14 +64,6 @@ public class LectureSearchService {
                 .map(row -> row.withSlots(slots.getOrDefault(row.lecNo(), List.of())))
                 .toList();
         return new LectureSearchResponse(condition.semNo(), pageNo, pageSize, total, items);
-    }
-
-    // 학기를 비우면 신청 대상 학기(D24), 그것도 없으면(정정까지 끝남) 현재 학기
-    private int targetSemester() {
-        return schedulePolicy
-                .registrationSemester()
-                .or(repository::findCurrentSemester)
-                .orElseThrow(() -> new BusinessException(ErrorCode.SEMESTER_NOT_FOUND));
     }
 
     private static String blankToNull(String value) {

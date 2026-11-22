@@ -28,6 +28,12 @@ public class AcademicScheduleRepository {
                         """, Integer.class, now).stream().findFirst();
     }
 
+    /** 현재 학기. 없으면 비어 있습니다. */
+    public Optional<Integer> findCurrentSemester() {
+        return jdbc.queryForList("SELECT sem_no FROM semester WHERE cur_sem_yn = 'Y'", Integer.class).stream()
+                .findFirst();
+    }
+
     /** 지금 열려 있는 장바구니 일정이 있는지. 시작 시각은 포함, 종료 시각은 제외합니다. */
     public boolean isCartOpen(int semNo, LocalDateTime now) {
         return exists("""

@@ -129,6 +129,11 @@ class LectureSearchControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 없는_학기는_404() throws Exception {
+        search("semNo=999").andExpect(status().isNotFound());
+    }
+
+    @Test
     void 페이지를_나눈다() throws Exception {
         search("semNo=11&page=2&size=20")
                 .andExpect(jsonPath("$.total").value(41))

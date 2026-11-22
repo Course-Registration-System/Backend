@@ -109,7 +109,8 @@ class EnrollmentConcurrencyTest extends IntegrationTest {
 
         List<ErrorCode> results = runAtOnce(tasks);
 
-        assertThat(results).filteredOn(code -> code != null).containsOnly(ErrorCode.LECTURE_CLOSED);
+        // 신청이 모두 폐강보다 먼저 끝나면 막힌 요청 없이 폐강이 신청을 모두 취소한다
+        assertThat(results).allMatch(code -> code == null || code == ErrorCode.LECTURE_CLOSED);
         assertThat(root.queryForObject("SELECT lec_stat FROM lecture WHERE lec_no = ?", String.class, entrepreneurship))
                 .isEqualTo("CLOSED");
         assertThat(enrlCnt(entrepreneurship)).isZero();
