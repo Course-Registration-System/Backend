@@ -12,8 +12,6 @@ import org.springframework.stereotype.Repository;
 /**
  * 담당 강의 조회(LEC-01)와 강의 관리 권한 확인 SQL. 모두 읽기만 합니다. lecture·lecture_time_slot·enrollment 는 강의 개설·수강신청 모듈,
  * semester 는 학사 모듈 소관입니다.
- *
- * <p>요일·수업유형·강의상태는 강의 개설 PR(#10)의 enum 이 main 에 들어오기 전까지 문자열로 다룹니다.
  */
 @Repository
 public class LectureTeachingRepository {
@@ -23,11 +21,11 @@ public class LectureTeachingRepository {
 
     /** 담당 강의 한 행과 수강 인원. */
     public record TeachingLectureRow(
-            int lecNo, String crsCd, String crsNm, int sectNo, int cap, int enrlCnt, String lecStat) {}
+            int lecNo, String crsCd, String crsNm, int sectNo, int cap, int enrlCnt, LecStat lecStat) {}
 
     /** 강의시간 한 칸과 강의실명. roomCd·roomNm 은 온라인이거나 미배정이면 null 입니다. */
     public record TimeSlotRow(
-            int lecNo, String dow, LocalTime startTm, LocalTime endTm, String clsType, String roomCd, String roomNm) {}
+            int lecNo, Dow dow, LocalTime startTm, LocalTime endTm, ClsType clsType, String roomCd, String roomNm) {}
 
     private static final RowMapper<SemesterRow> SEMESTER =
             (rs, rowNum) -> new SemesterRow(rs.getInt("sem_no"), rs.getInt("yr"), rs.getString("sem_type"));
@@ -39,14 +37,14 @@ public class LectureTeachingRepository {
             rs.getInt("sect_no"),
             rs.getInt("cap"),
             rs.getInt("enrl_cnt"),
-            rs.getString("lec_stat"));
+            LecStat.valueOf(rs.getString("lec_stat")));
 
     private static final RowMapper<TimeSlotRow> TIME_SLOT = (rs, rowNum) -> new TimeSlotRow(
             rs.getInt("lec_no"),
-            rs.getString("dow"),
+            Dow.valueOf(rs.getString("dow")),
             rs.getObject("start_tm", LocalTime.class),
             rs.getObject("end_tm", LocalTime.class),
-            rs.getString("cls_type"),
+            ClsType.valueOf(rs.getString("cls_type")),
             rs.getString("room_cd"),
             rs.getString("room_nm"));
 

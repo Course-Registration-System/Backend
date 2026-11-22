@@ -21,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class LectureTeachingService {
 
-    private static final String ONLINE = "ONLINE";
     private static final String PLACE_ONLINE = "온라인";
     private static final String PLACE_UNASSIGNED = "미배정";
 
@@ -82,7 +81,7 @@ public class LectureTeachingService {
     // 장소 표시: 온라인이면 "온라인", 강의실이 없으면 "미배정", 있으면 강의실명
     private static TeachingTimeSlot toTimeSlot(TimeSlotRow row) {
         String place;
-        if (ONLINE.equals(row.clsType())) {
+        if (row.clsType() == ClsType.ONLINE) {
             place = PLACE_ONLINE;
         } else if (row.roomCd() == null) {
             place = PLACE_UNASSIGNED;
