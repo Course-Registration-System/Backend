@@ -2,7 +2,7 @@
 
 사용: python -X utf8 tools/bulk/gen_bulk.py --scale S [--out build/bulk/S]
      표준 라이브러리만 쓴다. 난수 시드가 고정이라 같은 인수면 같은 데이터가 나온다.
-적재: python -X utf8 tools/bulk/load_bulk.py --dir build/bulk/S   (별도 DB crs_bulk 에 넣고 seed-checks.sql 로 검사)
+적재: python -X utf8 tools/bulk/load_bulk.py --dir build/bulk/S   (별도 DB crs_bulk 에 넣고 seed-checks.sql 과 대량 데이터 검사)
 
 규모        학생     학기   정규학기당 강의   수강신청 행     생성 / 적재 / 검사(로컬 기준)
 XS          300      8      60               약 6천          생성기 점검용
@@ -12,7 +12,8 @@ L           29,997   8      4,500            약 77만         13초 / 25초 / 1
 입학 연도가 2024·2025·2026 으로 나뉘어 학생마다 다닌 학기 수가 달라서, 학기당 6과목을 모두 곱한 값보다 적다.
 
 학기 8개는 정규 6(2024-1 ~ 2026-2) + 계절 2(2024 여름, 2025 겨울)이고, 모두 성적이 확정된 과거 학기다.
-현재 학기는 2026-2 다.
+현재 학기는 2026-2 다. 학사일정은 학기마다 장바구니·수강신청·정정·성적입력 네 개이고, 성적 확정 일시는 성적입력 종료
+하루 뒤다. 계절학기 성적입력과 확정은 다음 정규학기 장바구니 시작 전에 끝난다(ACA-01).
 
 분포
 - 강의 인기는 쏠림(Zipf). 70% 는 소속 학과 강의에서, 30% 는 전체에서 고른다. 일부 강의는 정원이 찬다.
@@ -145,13 +146,17 @@ class Picker:
 
 
 def schedule_times(yr, sem_type):
-    """학기별 장바구니·수강신청·정정·성적입력 기간."""
+    """학기별 장바구니·수강신청·정정·성적입력 기간.
+
+    계절학기 성적입력은 다음 정규학기 장바구니(2/1, 8/1) 전에 끝난다(ACA-01). 여름 7/20~7/30, 겨울 다음 해 1/19~1/29
+    """
     base = {"FIRST": datetime(yr, 2, 1), "SUMMER": datetime(yr, 6, 1), "SECOND": datetime(yr, 8, 1),
             "WINTER": datetime(yr, 12, 1)}[sem_type]
     cart = (base, base + timedelta(days=4))
     enroll = (base + timedelta(days=7, hours=10), base + timedelta(days=10, hours=17))
     adjust = (base + timedelta(days=30, hours=10), base + timedelta(days=36, hours=17))
-    grade = (base + timedelta(days=120), base + timedelta(days=130))
+    grade_start = base + timedelta(days=120 if sem_type in REGULAR else 49)
+    grade = (grade_start, grade_start + timedelta(days=10))
     return dict(CART=cart, ENROLL=enroll, ADJUST=adjust, GRADE=grade)
 
 
