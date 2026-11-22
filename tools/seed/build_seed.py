@@ -125,7 +125,9 @@ def dt(y, m, d, hh=10, mm=0):
 
 
 def schedules(sem):
-    """학기마다 장바구니 → 수강신청(학년별) → 정정 → 성적입력. 계절학기 신청은 전 학년."""
+    """학기마다 장바구니 → 수강신청(학년별) → 정정 → 성적입력. 계절학기 신청은 전 학년.
+    계절학기 성적입력은 다음 정규학기 장바구니 전에 끝나고 다음 날 확정한다. 다음 정규학기 최대학점 산정(장바구니 전)이 계절학기 성적까지
+    확정된 뒤에만 되기 때문이다."""
     y, t = SEM[sem]
     if t == "FIRST":
         cart, enr, adj, grd = ((1, 18), (1, 22)), (2, 9), ((3, 3), (3, 9)), ((6, 15), (6, 26))
@@ -133,9 +135,9 @@ def schedules(sem):
         cart, enr, adj, grd = ((7, 20), (7, 24)), (8, 10), ((9, 2), (9, 8)), ((12, 14), (12, 23))
     else:
         rows = {"SUMMER": [("CART", (5, 25), (5, 27)), ("ENROLL", (6, 1), (6, 2)), ("ADJUST", (6, 22), (6, 23)),
-                           ("GRADE", (7, 20), (7, 24))],
+                           ("GRADE", (7, 13), (7, 17))],
                 "WINTER": [("CART", (11, 23), (11, 25)), ("ENROLL", (11, 30), (12, 1)), ("ADJUST", (12, 21), (12, 22)),
-                           ("GRADE", (13, 18), (13, 22))]}[t]
+                           ("GRADE", (13, 11), (13, 15))]}[t]
         out = []
         for typ, (m1, d1), (m2, d2) in rows:
             y1, y2 = (y + 1, y + 1) if m1 == 13 else (y, y)
@@ -734,14 +736,21 @@ def insert(table, cols, rows, chunk=50):
 
 # ---------------------------------------------------------------- 시점과 단계
 # T0 기본 시드: 2026-2 성적 입력 기간. 2026-2는 대부분 제출, 시연 강의는 입력중(20260001 빈칸), 1개는 미입력
-# s1 성적 마감(12-23 ~ 01-15): 2026-2 확정, 진급·졸업·복학, 2027 신입생 계정, 2027-1 최대학점
-# s2 신청일까지(01-18 ~ 02-11 10:05): 겨울학기 성적 확정, 장바구니, 4·3학년 신청(02-09·10)
+# s1 성적 마감(12-23 ~ 01-17): 2026-2 확정, 겨울학기 성적 확정(01-16), 진급·졸업·복학, 2027 신입생 계정, 2027-1 최대학점
+# s2 신청일까지(01-18 ~ 02-11 10:05): 장바구니, 4·3학년 신청(02-09·10)
 # s3 정정까지(02-11 ~ 03-04 11:00): 2·1학년 신청(02-11·12), 현재학기 2027-1로 전환(03-02)
 T0 = SNAPSHOT
 T1 = datetime(2027, 2, 11, 10, 5)
 T2 = datetime(2027, 3, 4, 11, 0)
 S1_CNFM = datetime(2026, 12, 28, 10, 0)
-S2_CNFM = datetime(2027, 1, 25, 10, 0)
+
+
+def cnfm_dtm(sem):
+    """지난 학기 성적 확정 일시. 정규학기는 성적입력이 끝나고 5일 뒤, 계절학기는 다음 정규학기 장바구니 전이 되도록 1일 뒤."""
+    return sched_of(sem, "GRADE")[3] + timedelta(days=1 if SEM[sem][1] in ("SUMMER", "WINTER") else 5)
+
+
+WINTER_CNFM = cnfm_dtm(10)
 
 DEMO_LEC = find_lec(CUR, POPULAR)          # 성적 입력 시연 강의(입력중, 20260001 빈칸)
 DEMO_PROF = DEMO_LEC["prof"]
@@ -836,7 +845,7 @@ base_cnt = lambda l: sum(1 for e in BASE_ENR if e["lec"] is l and e["stat"] == "
 lrows = []
 for l in LECTURES:
     gst = t0_gstat(l)
-    cdt = sched_of(l["sem"], "GRADE")[3] + timedelta(days=5) if gst == "CONFIRMED" else None
+    cdt = cnfm_dtm(l["sem"]) if gst == "CONFIRMED" else None
     wt = l["wt"] or (None,) * 4
     lrows.append((l["no"], l["cd"], l["sem"], l["prof"], l["sect"], l["cap"], base_cnt(l), l["stat"], l["eng"], l["exmp"],
                   f"plans/{l['sem']}/{l['cd']}-{l['sect']}.pdf", *wt, gst, ADMIN if cdt else None, cdt))
@@ -880,7 +889,11 @@ s1 = [f"UPDATE grade SET mid_scr = {g['mid']}, fin_scr = {g['fin']}, hw_scr = {g
       keep_existing(insert("grade", GCOLS, [grade_row(e) for e in ENR if e["lec"] is NOTENT and e["stat"] == "ENROLLED"]),
                     "ltr_grd"),
       f"UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = {q(ADMIN)}, cnfm_dtm = {q(S1_CNFM)} "
-      f"WHERE sem_no = {CUR} AND grd_stat <> 'CONFIRMED';"]
+      f"WHERE sem_no = {CUR} AND grd_stat <> 'CONFIRMED';",
+      keep_existing(insert("grade", GCOLS, [grade_row(e) for e in ENR if e["lec"]["sem"] == 10 and e["stat"] == "ENROLLED"]),
+                    "ltr_grd"),
+      f"UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = {q(ADMIN)}, cnfm_dtm = {q(WINTER_CNFM)} "
+      f"WHERE sem_no = 10 AND grd_stat <> 'CONFIRMED';"]
 for s_ in T0_STUDENTS:
     if yr_stat_t0(s_) != FINAL[s_]:
         s1.append(f"UPDATE student SET yr_lvl = {FINAL[s_][0]}, std_stat = {q(FINAL[s_][1])} WHERE std_no = {q(s_)};")
@@ -889,15 +902,13 @@ s1.append(keep_existing(insert("student", ["std_no", "dept_no", "yr_lvl", "std_s
                                [(s_, ST[s_]["dept"], *FINAL[s_]) for s_ in NEW_STUDENTS]), "std_no"))
 s1.append(keep_existing(insert("semester_maximum_credit", ["std_no", "sem_no", "max_crdt"],
                                sorted([(s_, sem, m) for (s_, sem), m in MAXC.items() if sem == TARGET])), "max_crdt"))
-write_overlay("s1_grade_close", "s1 성적 마감(2026-12-23 ~ 2027-01-15): 2026-2 확정, 진급·졸업·복학, 2027 신입생 계정, 2027-1 최대학점", s1)
+write_overlay("s1_grade_close", "s1 성적 마감(2026-12-23 ~ 2027-01-17): 2026-2 확정, 겨울학기 성적 확정, 진급·졸업·복학, 2027 신입생 계정, 2027-1 최대학점", s1)
 
-s2 = [insert("grade", GCOLS, [grade_row(e) for e in ENR if e["lec"]["sem"] == 10 and e["stat"] == "ENROLLED"]),
-      f"UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = {q(ADMIN)}, cnfm_dtm = {q(S2_CNFM)} WHERE sem_no = 10;",
-      insert("course_cart", ["std_no", "lec_no", "reg_dtm"], sorted({(s_, l["no"], d) for s_, l, d in CART})),
+s2 = [insert("course_cart", ["std_no", "lec_no", "reg_dtm"], sorted({(s_, l["no"], d) for s_, l, d in CART})),
       insert("enrollment", ECOLS, [erow(e) for e in S2_ENR])]
 for l in sorted({id(e["lec"]): e["lec"] for e in S2_ENR}.values(), key=lambda l: l["no"]):
     s2.append(f"UPDATE lecture SET enrl_cnt = {cnt(l)} WHERE lec_no = {l['no']};")
-write_overlay("s2_enroll_day", f"s2 신청일까지(2027-01-18 ~ {T1:%m-%d %H:%M}): 겨울학기 성적 확정, 장바구니, 4·3학년 수강신청", s2)
+write_overlay("s2_enroll_day", f"s2 신청일까지(2027-01-18 ~ {T1:%m-%d %H:%M}): 장바구니, 4·3학년 수강신청", s2)
 
 s3 = [insert("enrollment", ["std_no", "lec_no", "enrl_stat", "retake_yn", "proc_type", "enrl_dtm"],
              [(e["std"], e["lec"]["no"], "ENROLLED", e["retake"], "STUDENT", e["enrl_dtm"])
@@ -1019,12 +1030,12 @@ gd = ["# 시드 데이터 안내", "",
       row("순서", "시각", "누가", "무엇을", "데이터"), row(*["---"] * 5),
       row("① 성적 입력", f"T0 {T0:%Y-%m-%d %H:%M}", f"교수 {DEMO_PROF}", f"{lec_label(DEMO_LEC)}에서 {RICH} 점수 입력(90~93점 → A-) 후 제출", f"A {A_NOW}명 + 1 = 한도 {A_LIMIT}명. A를 더 주면 제출 불가"),
       row("② 성적 확정", "T0", f"관리자 {ADMIN}", f"미입력 강의 {lec_label(NOTENT)} 확인, 2026-2 확정", "기본 시드"),
-      row("③ 학기 마감", "(T0 → T1)", f"관리자 {ADMIN}", "진급·졸업·복학, 2027-1 최대학점 산정", "앱 기능. 없으면 `s1_grade_close`"),
+      row("③ 학기 마감", "(T0 → T1)", f"관리자 {ADMIN}", "겨울학기 성적 확정, 진급·졸업·복학, 2027-1 최대학점 산정", "`s1_grade_close` 후 앱 기능으로 다시 산정"),
       row("④ 시계 넘김", f"T1 {T1:%Y-%m-%d %H:%M}", "시연 API", "다른 학생들의 장바구니와 4·3학년 신청을 채움", "`s2_enroll_day`"),
       row("⑤ 수강신청", "T1", f"학생 {RICH}", f"장바구니 {plan_cr(RICH)}학점 + {RICH_EXTRA['no']}번 {crd(RICH_EXTRA)}학점 = 21학점 신청 성공. {FULL['no']}번은 정원 마감으로 차단", "s2 이후"),
       row("⑥ 차단 사례", "T1", "학생 여럿", "아래 모듈 B 표의 T1 사례", "s2 이후"),
       row("⑦ 데이터 제어", "T1", "root·app·readonly", "`demo/` SQL", "s2 이후"), "",
-      "①에서 89점 이하(B+)를 넣으면 평점이 4.0 아래가 되어 ③의 최대학점이 18이 되고, ⑤에서 21학점 신청이 막힌다. `s1_grade_close` 는 최대학점을 미리 계산해 둔 값(21)으로 넣으므로 이 대비를 보이려면 ③을 앱 기능으로 해야 한다.", "",
+      "①에서 89점 이하(B+)를 넣으면 평점이 4.0 아래가 되어 ③의 최대학점이 18이 되고, ⑤에서 21학점 신청이 막힌다. `s1_grade_close` 는 최대학점을 미리 계산해 둔 값(21)으로 넣으므로 이 대비를 보이려면 s1 을 넣은 뒤 앱으로 2027-1 최대학점을 다시 산정한다(다시 산정하면 그 학기 값을 지우고 새로 계산한다). 2027-1 산정은 겨울학기 성적까지 확정돼야 하므로 s1 없이 T0 에서 바로 실행하면 `GRADES_NOT_CONFIRMED` 로 막힌다.", "",
       "## 시점과 오버레이", "",
       row("시점", "시각", "열린 기간", "적용할 오버레이"), row(*["---"] * 4),
       row("T0", f"{T0:%Y-%m-%d %H:%M}", "2026-2 성적 입력, 2026 겨울 정정", "없음(기본 시드)"),
@@ -1107,12 +1118,15 @@ gd = ["# 시드 데이터 안내", "",
 gd += [row(s_, v["nm"], dict(DEPTS)[v["dept"]],
            "-" if s_ in NEW_STUDENTS else "{} {}".format(*yr_stat_t0(s_)), "{} {}".format(*FINAL[s_]),
            MAXC.get((s_, TARGET), "-")) for s_, v in ST.items()]
-gd += ["", "## 학사일정 (2027-1)", "", row("유형", "대상학년", "시작", "종료"), row(*["---"] * 4)]
-gd += [row(t, lv or "전체", f"{a:%Y-%m-%d %H:%M}", f"{b:%Y-%m-%d %H:%M}") for t, lv, a, b in SCHED[TARGET]]
+gd += ["", "## 학사일정 (2026 겨울, 2027-1)", "",
+       "겨울학기 성적입력은 2027-1 장바구니 전에 끝나고 다음 날 확정된다(s1). 2027-1 최대학점 산정은 겨울학기 성적까지 확정된 뒤, 장바구니 시작 전에 한다. "
+       "여름학기도 같은 방식으로 2학기 장바구니 전에 확정된다.", "",
+       row("학기", "유형", "대상학년", "시작", "종료"), row(*["---"] * 5)]
+gd += [row({10: "2026 겨울", TARGET: "2027-1"}[s_], t, lv or "전체", f"{a:%Y-%m-%d %H:%M}", f"{b:%Y-%m-%d %H:%M}") for s_ in (10, TARGET) for t, lv, a, b in SCHED[s_]]
 gd += ["", "## 건수", "", row("테이블", "기본 시드", "s1", "s2", "s3"), row(*["---"] * 5),
        row("enrollment", len(BASE_ENR), "-", len(S2_ENR), len(S3_ENR)),
-       row("grade", len(base_grades), sum(1 for e in ENR if e["lec"] is NOTENT and e["stat"] == "ENROLLED"),
-           sum(1 for e in ENR if e["lec"]["sem"] == 10 and e["stat"] == "ENROLLED"), "-"),
+       row("grade", len(base_grades), sum(1 for e in ENR if (e["lec"] is NOTENT or e["lec"]["sem"] == 10) and e["stat"] == "ENROLLED"),
+           "-", "-"),
        row("course_cart", "-", "-", len({(s_, l_['no']) for s_, l_, _ in CART}), "-"),
        row("semester_maximum_credit", sum(1 for (s_, sem) in MAXC if sem <= 10), sum(1 for (s_, sem) in MAXC if sem == TARGET), "-", "-")]
 OUT_GUIDE.write_text("\n".join(gd) + "\n", encoding="utf-8", newline="\n")

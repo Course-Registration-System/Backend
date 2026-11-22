@@ -110,6 +110,16 @@ SELECT COUNT(*) FROM (
 WHERE (cmpl_type = 'TEACHING' AND a > FLOOR(n * 0.5))
    OR (cmpl_type <> 'TEACHING' AND (a > FLOOR(n * 0.4) OR ab > FLOOR(n * 0.8)));
 
+-- CHECK 성적 확정이 다음 정규학기 장바구니 시작 뒤(그 학기 최대학점은 장바구니 전에 앞 학기 성적이 모두 확정돼야 산정) | 0
+WITH ord AS (SELECT sem_no, sem_type, yr * 10 + FIELD(sem_type, 'FIRST', 'SUMMER', 'SECOND', 'WINTER') AS o FROM semester),
+nxt AS (
+  SELECT lo.sem_no,
+         (SELECT a.start_dtm FROM ord n JOIN academic_schedule a ON a.sem_no = n.sem_no AND a.schd_type = 'CART'
+           WHERE n.sem_type IN ('FIRST', 'SECOND') AND n.o > lo.o ORDER BY n.o LIMIT 1) AS cart_start
+  FROM ord lo)
+SELECT COUNT(*) FROM lecture l JOIN nxt USING (sem_no)
+WHERE l.grd_stat = 'CONFIRMED' AND l.cnfm_dtm >= nxt.cart_start;
+
 -- CHECK 역할과 하위 테이블 불일치 | 0
 SELECT COUNT(*) FROM user_account u
 LEFT JOIN student s ON s.std_no = u.usr_no

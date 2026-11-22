@@ -91,31 +91,27 @@ public class MaxCreditRepository {
         return Boolean.TRUE.equals(started);
     }
 
-    /** 대상 학기 바로 앞의 정규학기. 없으면 null. */
-    public Integer findPreviousRegular(int targetOrd) {
-        return jdbc
-                .queryForList(
-                        "SELECT s.sem_no FROM semester s WHERE s.sem_type IN ('FIRST', 'SECOND') AND " + SEM_ORD
-                                + " < :targetOrd ORDER BY " + SEM_ORD + " DESC LIMIT 1",
-                        new MapSqlParameterSource("targetOrd", targetOrd),
-                        Integer.class)
-                .stream()
-                .findFirst()
-                .orElse(null);
-    }
-
-    /** 신청한 학생이 있는데 성적이 확정되지 않은 개설 강의. 예: "183 데이터베이스(1분반)" */
-    public List<String> findUnconfirmedLectures(int semNo) {
-        return jdbc.queryForList("""
+    /**
+     * 직전 정규학기부터 대상 학기 바로 앞까지(사이의 계절학기 포함) 신청한 학생이 있는데 성적이 확정되지 않은 개설 강의. 직전 정규학기가 없으면
+     * 대상 학기 앞의 모든 학기를 봅니다. 예: "183 데이터베이스(1분반)"
+     */
+    public List<String> findUnconfirmedLectures(int targetOrd) {
+        return jdbc.queryForList(
+                """
                 SELECT CONCAT(l.lec_no, ' ', c.crs_nm, '(', l.sect_no, '분반)')
                   FROM lecture l
                   JOIN course c ON c.crs_cd = l.crs_cd
-                 WHERE l.sem_no = :semNo
+                  JOIN semester s ON s.sem_no = l.sem_no
+                 WHERE %s < :targetOrd
+                   AND %s >= COALESCE((SELECT MAX(%s) FROM semester s
+                                        WHERE s.sem_type IN ('FIRST', 'SECOND') AND %s < :targetOrd), 0)
                    AND l.lec_stat = 'OPEN'
                    AND l.grd_stat <> 'CONFIRMED'
                    AND EXISTS (SELECT 1 FROM enrollment e WHERE e.lec_no = l.lec_no AND e.enrl_stat = 'ENROLLED')
                  ORDER BY l.lec_no
-                """, new MapSqlParameterSource("semNo", semNo), String.class);
+                """.formatted(SEM_ORD, SEM_ORD, SEM_ORD, SEM_ORD),
+                new MapSqlParameterSource("targetOrd", targetOrd),
+                String.class);
     }
 
     /**

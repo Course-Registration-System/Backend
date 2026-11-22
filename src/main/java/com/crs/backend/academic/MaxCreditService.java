@@ -65,19 +65,18 @@ public class MaxCreditService {
         return maxCreditRepository.findAll(semNo);
     }
 
-    /** 정규학기 산정은 직전 정규학기 성적이 모두 확정된 뒤에만 합니다(선행 조건 GRD-02). 확정 안 된 강의를 알려 주고 거부합니다. */
+    /**
+     * 정규학기 산정은 직전 정규학기부터 대상 학기 바로 앞까지의 성적이 모두 확정된 뒤에만 합니다(선행 조건 GRD-02). 사이의 계절학기도 봅니다.
+     * 평점에는 쓰지 않지만 채플 P 학기 수와 이수 학점이 졸업 판정에 들어가기 때문입니다. 확정 안 된 강의를 알려 주고 거부합니다.
+     */
     private void checkPreviousConfirmed(int targetOrd) {
-        Integer previous = maxCreditRepository.findPreviousRegular(targetOrd);
-        if (previous == null) {
-            return;
-        }
-        List<String> unconfirmed = maxCreditRepository.findUnconfirmedLectures(previous);
+        List<String> unconfirmed = maxCreditRepository.findUnconfirmedLectures(targetOrd);
         if (unconfirmed.isEmpty()) {
             return;
         }
         String shown = String.join(", ", unconfirmed.subList(0, Math.min(SHOWN_LECTURES, unconfirmed.size())));
         String more = unconfirmed.size() > SHOWN_LECTURES ? " 외 " + (unconfirmed.size() - SHOWN_LECTURES) + "개" : "";
-        throw new BusinessException(ErrorCode.GRADES_NOT_CONFIRMED, "직전 정규학기에 성적이 확정되지 않은 강의가 있습니다: " + shown + more);
+        throw new BusinessException(ErrorCode.GRADES_NOT_CONFIRMED, "직전 정규학기 이후 성적이 확정되지 않은 강의가 있습니다: " + shown + more);
     }
 
     private static int order(SemesterResponse semester) {

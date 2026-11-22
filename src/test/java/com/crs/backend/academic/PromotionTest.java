@@ -1,7 +1,10 @@
 package com.crs.backend.academic;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.crs.backend.common.BusinessException;
+import com.crs.backend.common.ErrorCode;
 import com.crs.backend.support.IntegrationTest;
 import com.crs.backend.support.SeedFixtures.Account;
 import com.crs.backend.support.SeedFixtures.Semester;
@@ -17,8 +20,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 진급·졸업과 최대학점의 경계 사례. 학생마다 이수 내역을 직접 만들고 2027-1 산정을 실행합니다. 2026-2 성적이 확정돼야 정규학기 산정이
- * 되므로 s1 상태에서 시작합니다. 모든 데이터는 테스트가 끝나면 롤백됩니다.
+ * 진급·졸업과 최대학점의 경계 사례. 학생마다 이수 내역을 직접 만들고 2027-1 산정을 실행합니다. 2026-2 와 2026 겨울 성적이 확정돼야
+ * 정규학기 산정이 되므로 s1 상태에서 시작합니다. 모든 데이터는 테스트가 끝나면 롤백됩니다.
  */
 @Transactional
 class PromotionTest extends IntegrationTest {
@@ -73,6 +76,39 @@ class PromotionTest extends IntegrationTest {
         maxCreditService.calculate(Semester.Y2027_FIRST);
 
         assertThat(s.status()).isEqualTo("GRADUATED");
+    }
+
+    @Test
+    void 겨울학기_성적이_확정되지_않았으면_산정을_막고_졸업시키지_않는다() {
+        // 정규학기 채플 P 5학기 + 겨울 채플 P. 겨울 성적이 확정되면 졸업할 학생이다
+        History s = graduateCandidate("29990001", 5);
+        s.takeUnconfirmed(WINTER, "0.5", "CHAPEL", "PASS_FAIL", "P");
+
+        assertThatThrownBy(() -> maxCreditService.calculate(Semester.Y2027_FIRST))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.GRADES_NOT_CONFIRMED));
+
+        assertThat(s.status()).isEqualTo("ATTENDING");
+        assertThat(s.maxCredit()).isNull();
+    }
+
+    @Test
+    void 겨울학기_성적은_최대학점_평점에_넣지_않는다() {
+        // 2026-2 B+ 3학점 + 겨울 A+ 6학점: 겨울을 넣으면 4.17 이라 21 이지만 2026-2 만 봐서 18
+        History low = new History("29990001");
+        low.take(9, "3.0", "MAJOR_ELEC", "GRADE", "B+");
+        low.take(WINTER, "3.0", "MAJOR_ELEC", "GRADE", "A+");
+        low.take(WINTER, "3.0", "MAJOR_ELEC", "GRADE", "A+");
+        // 2026-2 A0 3학점 + 겨울 F 3학점: 겨울을 넣으면 2.15 라 18 이지만 2026-2 만 봐서 21
+        History high = new History("29990002");
+        high.take(9, "3.0", "MAJOR_ELEC", "GRADE", "A0");
+        high.take(WINTER, "3.0", "MAJOR_ELEC", "GRADE", "F");
+
+        maxCreditService.calculate(Semester.Y2027_FIRST);
+
+        assertThat(low.maxCredit()).isEqualTo(18);
+        assertThat(high.maxCredit()).isEqualTo(21);
     }
 
     @Test
@@ -241,6 +277,23 @@ class PromotionTest extends IntegrationTest {
 
         /** 새 과목을 만들어 그 학기에 이수합니다. 과목코드를 돌려줍니다. */
         String take(int semNo, String crdt, String cmplType, String evalType, String grade) {
+            String crsCd = newCourse(crdt, cmplType, evalType);
+            enroll(crsCd, semNo, grade);
+            return crsCd;
+        }
+
+        /** 새 과목을 그 학기에 듣고 성적은 제출만 된(확정 전) 상태로 둡니다. */
+        void takeUnconfirmed(int semNo, String crdt, String cmplType, String evalType, String grade) {
+            String crsCd = newCourse(crdt, cmplType, evalType);
+            jdbc.update(
+                    "INSERT INTO lecture (crs_cd, sem_no, prof_no, sect_no, cap, grd_stat) VALUES (?, ?, ?, 1, 50, 'SUBMITTED')",
+                    crsCd,
+                    semNo,
+                    Account.DEMO_PROFESSOR);
+            addEnrollment(crsCd, semNo, grade);
+        }
+
+        private String newCourse(String crdt, String cmplType, String evalType) {
             String crsCd = "Z" + "%05d".formatted(COURSE_SEQ.incrementAndGet());
             jdbc.update(
                     "INSERT INTO course (crs_cd, dept_no, crs_nm, crdt, cmpl_type, eval_type) VALUES (?, 101, ?, ?, ?, ?)",
@@ -249,7 +302,6 @@ class PromotionTest extends IntegrationTest {
                     new BigDecimal(crdt),
                     cmplType,
                     evalType);
-            enroll(crsCd, semNo, grade);
             return crsCd;
         }
 
@@ -266,6 +318,10 @@ class PromotionTest extends IntegrationTest {
                     semNo,
                     Account.DEMO_PROFESSOR,
                     Account.ADMIN);
+            addEnrollment(crsCd, semNo, grade);
+        }
+
+        private void addEnrollment(String crsCd, int semNo, String grade) {
             Integer lecNo = jdbc.queryForObject(
                     "SELECT lec_no FROM lecture WHERE crs_cd = ? AND sem_no = ?", Integer.class, crsCd, semNo);
             jdbc.update("INSERT INTO enrollment (std_no, lec_no) VALUES (?, ?)", stdNo, lecNo);
