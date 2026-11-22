@@ -173,6 +173,38 @@ class SemesterControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 계절학기_성적입력이_다음_정규학기_장바구니_시작보다_늦게_끝나면_막는다() throws Exception {
+        int summer = createSemester(2027, "SUMMER");
+        int second = createSemester(2027, "SECOND");
+        schedule(second, "CART", null, "2027-07-20T10:00:00", "2027-07-24T17:00:00")
+                .andExpect(status().isCreated());
+
+        schedule(summer, "GRADE", null, "2027-07-15T10:00:00", "2027-07-20T10:01:00")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SCHEDULE_ORDER"));
+        // 장바구니가 시작하는 시각에 끝나는 것은 된다
+        schedule(summer, "GRADE", null, "2027-07-15T10:00:00", "2027-07-20T10:00:00")
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void 정규학기_장바구니_수강신청이_직전_계절학기_성적입력_종료보다_먼저_시작하면_막는다() throws Exception {
+        int summer = createSemester(2027, "SUMMER");
+        schedule(summer, "GRADE", null, "2027-07-10T10:00:00", "2027-07-15T17:00:00")
+                .andExpect(status().isCreated());
+        int second = createSemester(2027, "SECOND");
+
+        schedule(second, "CART", null, "2027-07-15T10:00:00", "2027-07-20T17:00:00")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SCHEDULE_ORDER"));
+        schedule(second, "ENROLL", 4, "2027-07-15T10:00:00", "2027-07-15T18:00:00")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SCHEDULE_ORDER"));
+        schedule(second, "CART", null, "2027-07-15T17:00:00", "2027-07-20T17:00:00")
+                .andExpect(status().isCreated());
+    }
+
+    @Test
     void 시작일시가_종료일시보다_빠르지_않으면_막는다() throws Exception {
         int semNo = createSemester(2027, "SECOND");
         schedule(semNo, "CART", null, "2027-07-24T17:00:00", "2027-07-24T17:00:00")

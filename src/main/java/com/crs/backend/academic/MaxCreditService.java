@@ -80,7 +80,8 @@ public class MaxCreditService {
         throw new BusinessException(ErrorCode.GRADES_NOT_CONFIRMED, "직전 정규학기 이후 성적이 확정되지 않은 강의가 있습니다: " + shown + more);
     }
 
-    private static int order(SemesterResponse semester) {
+    /** 학기 순서값. {@link MaxCreditRepository#SEM_ORD} 와 같은 식입니다. */
+    static int order(SemesterResponse semester) {
         return semester.yr() * 10 + semester.semType().ordinal() + 1;
     }
 
