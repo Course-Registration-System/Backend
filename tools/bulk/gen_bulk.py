@@ -2,7 +2,7 @@
 
 사용: python -X utf8 tools/bulk/gen_bulk.py --scale S [--out build/bulk/S]
      표준 라이브러리만 쓴다. 난수 시드가 고정이라 같은 인수면 같은 데이터가 나온다.
-적재: python -X utf8 tools/bulk/load_bulk.py --dir build/bulk/S   (별도 DB crs_bulk 에 넣고 verify.sql 로 검사)
+적재: python -X utf8 tools/bulk/load_bulk.py --dir build/bulk/S   (별도 DB crs_bulk 에 넣고 seed-checks.sql 로 검사)
 
 규모        학생     학기   정규학기당 강의   수강신청 행     생성 / 적재 / 검사(로컬 기준)
 XS          300      8      60               약 7천          생성기 점검용
@@ -17,12 +17,15 @@ L           20만     8      6,000            약 420만(추정)
 분포
 - 강의 인기는 쏠림(Zipf). 70% 는 소속 학과 강의에서, 30% 는 전체에서 고른다. 일부 강의는 정원이 찬다.
 - 점수는 학생 실력 + 강의 난이도 + 잡음(정규분포). 10명 이상 강의는 상대평가(A 40%, A+B 80%)를 지킨다.
-- 재수강 약 4%(C+ 이하를 받은 과목), 채플은 정규학기마다, 휴학 약 10%.
+- 재수강 약 5%(C+ 이하를 받은 과목, 학생당 10과목까지), 채플은 정규학기마다, 휴학 약 10%.
 
 지키는 규칙
 - 스키마 CHECK 전부. enrl_cnt = 신청 건수 ≤ 정원
 - 한 학생의 같은 학기 강의는 시간이 겹치지 않는다(강의마다 시간 칸 하나, 학생은 칸마다 하나만)
-- 같은 학기에 같은 과목 두 분반 금지, 최대학점 이내(직전 정규학기 평점 4.0 이상 21, 아니면 18, 계절 6. 채플 제외)
+- 같은 학기에 같은 과목 두 분반 금지, 최대학점 이내(채플 제외). 최대학점은 ACA-01·MaxCreditRepository 와 같다:
+  직전 정규학기 평점 4.0 이상 21, 아니면 18(성적 없음 포함). 다닌 정규학기가 2개(2학년 1학기)면 1학년 두 학기를
+  학점 가중으로 합친 평점을 본다. 계절학기 성적은 쓰지 않고, 계절학기 최대학점은 6
+- 재수강은 학생당 10과목까지(같은 과목을 여러 번 들어도 1과목, 채플은 재수강으로 세지 않음)
 - 재수강 성적은 A- 까지, P/F 과목은 점수 없음, 취소한 신청에는 성적 없음
 - 같은 강의실·같은 시간 칸에 대면 강의 하나, 교수 한 명도 같은 시간 칸에 강의 하나
 - 학기별 최대학점(semester_maximum_credit)은 다닌 학기마다 넣는다
@@ -63,8 +66,9 @@ GRADE_TABLE = [("A+", 97, 4.5), ("A0", 94, 4.3), ("A-", 90, 4.0), ("B+", 87, 3.5
                ("C+", 77, 2.5), ("C0", 74, 2.3), ("C-", 70, 2.0), ("D+", 67, 1.5), ("D0", 64, 1.3), ("D-", 60, 1.0),
                ("F", 0, 0.0)]
 ORDER = [g for g, _, _ in GRADE_TABLE]
-POINT = {g: p for g, _, p in GRADE_TABLE}
+POINT10 = {g: round(p * 10) for g, _, p in GRADE_TABLE}  # 평점×10. 4.0 경계를 정수로 비교한다
 RETAKE_OK = set(ORDER[ORDER.index("C+"):])  # C+ 이하면 재수강할 수 있다
+RETAKE_LIMIT = 10  # 재학 중 재수강할 수 있는 과목 수. 같은 과목을 여러 번 들어도 1과목
 
 DEPT_NAMES = ["컴퓨터학부", "경영학부", "전자공학과", "기계공학과", "화학과", "수학과", "영어영문학과", "경제학과", "심리학과",
               "교양교육원"]
@@ -227,7 +231,7 @@ def main():
         cohort = COHORTS[i % len(COHORTS)]
         sno = f"{cohort}{i // len(COHORTS) + 1:06d}"
         st = dict(no=sno, dept=rng.choice(major_depts), cohort=cohort, ability=rng.gauss(0, 1),
-                  on_leave=rng.random() < 0.10, history={}, last_gpa=None, regular_cnt=0)
+                  on_leave=rng.random() < 0.10, history={}, terms=[], retaken=set(), regular_cnt=0)
         # 휴학생은 다닐 수 있는 정규학기 중 마지막 하나 이상을 쉰다(현재 휴학 중)
         own_regular = [s for s, yr, t in SEMESTERS if t in REGULAR and yr >= cohort]
         st["leave_sems"] = set(own_regular[-rng.randint(1, min(2, len(own_regular))):]) if st["on_leave"] else set()
@@ -235,7 +239,6 @@ def main():
 
     # ---------------------------------------------------------------- 학기별 강의·신청·성적
     lec_no = 0
-    total_enrollments = 0
     for sem_no, yr, sem_type in SEMESTERS:
         regular = sem_type in REGULAR
         times = sched[sem_no]
@@ -296,7 +299,13 @@ def main():
                 continue
             if not regular and rng.random() > 0.10:  # 계절학기는 약 10% 만
                 continue
-            max_crdt = (21 if (st["last_gpa"] or 0) >= 4.0 else 18) if regular else 6
+            if regular:
+                # 평점 기준(ACA-01): 직전 정규학기. 다닌 정규학기가 2개(2학년 1학기)면 1학년 두 학기를 합친다. 성적 없으면 18
+                use = st["terms"] if len(st["terms"]) == 2 else st["terms"][-1:]
+                crd, pts = sum(t[0] for t in use), sum(t[1] for t in use)
+                max_crdt = 21 if crd and pts >= 40 * crd else 18
+            else:
+                max_crdt = 6
             w.row("semester_maximum_credit", st["no"], sem_no, max_crdt)
             target = rng.randint(5, 7) if regular else rng.randint(1, 2)
             used_blocks, taken_crs, credits, chosen = set(), set(), 0.0, []
@@ -310,6 +319,10 @@ def main():
                 prev = st["history"].get(crs["cd"])
                 if prev is not None and (not retake or prev not in RETAKE_OK):
                     return False
+                if prev is not None:
+                    if crs["cd"] not in st["retaken"] and len(st["retaken"]) >= RETAKE_LIMIT:
+                        return False
+                    st["retaken"].add(crs["cd"])
                 used_blocks.add(lec["block"])
                 taken_crs.add(crs["cd"])
                 credits += crs["crdt"]
@@ -334,6 +347,7 @@ def main():
                 enroll_rows.append((st, lec, retake))
             if regular and chosen:
                 st["regular_cnt"] += 1
+                st["terms"].append([0.0, 0])  # 이 학기 등급제 학점 합, 학점×평점×10 합(성적을 낸 뒤 채운다)
 
         # 강의 행과 시간
         for lec in lectures + chapels:
@@ -389,7 +403,6 @@ def main():
                 w.row("grade", st["no"], lec["no"], None, None, None, None, None, g)
             if lec["crs"]["cmpl"] != "CHAPEL":
                 st["history"][lec["crs"]["cd"]] = g
-            total_enrollments += 1
         cancel_cands = [lec for lec in lectures if len(lec["students"]) < lec["cap"]]
         for st in rng.sample(students, int(len(students) * 0.02)):
             if yr < st["cohort"] or sem_no in st["leave_sems"] or not cancel_cands:
@@ -401,20 +414,16 @@ def main():
             w.row("enrollment", st["no"], lec["no"], "CANCELLED", "N", "STUDENT", enr_s + timedelta(hours=1),
                   adj_s + timedelta(hours=rng.randint(1, 48)))
 
-        # 직전 정규학기 평점(다음 학기 최대학점)
+        # 이번 정규학기 평점 재료(다음 학기 최대학점). 계절학기 성적은 쓰지 않는다
         if regular:
-            sem_rows = {}
             for st, lec, retake in enroll_rows:
                 if lec["crs"]["eval"] == "GRADE":
                     g = letters[(st["no"], lec["no"])][0]
                     if retake and ORDER.index(g) < ORDER.index("A-"):
                         g = "A-"
-                    c, p = sem_rows.get(st["no"], (0.0, 0.0))
-                    sem_rows[st["no"]] = (c + lec["crs"]["crdt"], p + lec["crs"]["crdt"] * POINT[g])
-            for st in students:
-                if st["no"] in sem_rows:
-                    c, p = sem_rows[st["no"]]
-                    st["last_gpa"] = p / c
+                    t = st["terms"][-1]
+                    t[0] += lec["crs"]["crdt"]
+                    t[1] += lec["crs"]["crdt"] * POINT10[g]
 
         print(f"  학기 {sem_no} ({yr} {sem_type}): 강의 {len(lectures) + len(chapels)}, 신청 {len(enroll_rows)}")
 
