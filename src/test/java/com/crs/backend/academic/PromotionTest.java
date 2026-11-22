@@ -251,6 +251,34 @@ class PromotionTest extends IntegrationTest {
         assertThat(s.maxCredit()).isNull();
     }
 
+    @Test
+    void 성적_미확정으로_막히면_그_학기의_기존_최대학점을_지우지_않는다() {
+        History s = regularSemesters("29990001", 2, "A0");
+        maxCreditService.calculate(Semester.Y2027_FIRST);
+        assertThat(s.maxCredit()).isEqualTo(21);
+
+        // 서비스 예외로 테스트 트랜잭션이 롤백 전용이 되지만 롤백은 테스트가 끝날 때라 같은 트랜잭션에서 남은 값을 읽을 수 있다
+        s.takeUnconfirmed(WINTER, "3.0", "MAJOR_ELEC", "GRADE", "A0");
+        assertThatThrownBy(() -> maxCreditService.calculate(Semester.Y2027_FIRST))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.GRADES_NOT_CONFIRMED));
+
+        assertThat(s.maxCredit()).isEqualTo(21);
+    }
+
+    @Test
+    void 직전_정규학기보다_앞_학기의_미확정_강의는_산정을_막지_않는다() {
+        // 2027-1 은 직전 정규학기 2026-2 부터 본다. 2026-1 과 2026 여름의 미확정 강의는 보지 않는다
+        History s = new History("29990001");
+        s.takeUnconfirmed(7, "3.0", "MAJOR_ELEC", "GRADE", "A0");
+        s.takeUnconfirmed(SUMMER, "3.0", "MAJOR_ELEC", "GRADE", "A0");
+
+        maxCreditService.calculate(Semester.Y2027_FIRST);
+
+        assertThat(s.maxCredit()).isEqualTo(18);
+    }
+
     /** 정규 8학기, 학기마다 4학점 A0 4과목(128학점) + 2학점 1과목 = 130학점, 채플 P 학기 n개. */
     private History graduateCandidate(String stdNo, int chapelTerms) {
         History s = regularSemesters(stdNo, 8, "A0");

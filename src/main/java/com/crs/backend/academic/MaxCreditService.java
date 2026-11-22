@@ -46,14 +46,15 @@ public class MaxCreditService {
             throw new BusinessException(ErrorCode.MAX_CREDIT_CLOSED);
         }
         int graduated = 0;
-        maxCreditRepository.deleteBySemester(semNo);
 
         if (semester.regular()) {
             checkPreviousConfirmed(targetOrd);
             maxCreditRepository.recalculateYearLevels(targetOrd);
             graduated = maxCreditRepository.graduate(targetOrd);
+            maxCreditRepository.deleteBySemester(semNo);
             maxCreditRepository.insertRegular(semNo, targetOrd);
         } else {
+            maxCreditRepository.deleteBySemester(semNo);
             maxCreditRepository.insertSeasonal(semNo);
         }
 
