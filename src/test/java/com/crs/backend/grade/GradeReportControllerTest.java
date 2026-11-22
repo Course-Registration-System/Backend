@@ -9,22 +9,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.crs.backend.common.auth.JwtProvider;
 import com.crs.backend.common.auth.Role;
+import com.crs.backend.common.demo.DemoService;
 import com.crs.backend.support.Bearer;
 import com.crs.backend.support.IntegrationTest;
 import com.crs.backend.support.SeedFixtures.Account;
 import com.crs.backend.support.SeedFixtures.Semester;
 import com.crs.backend.support.SeedFixtures.Student;
+import com.crs.backend.support.SeedTime;
 import com.jayway.jsonpath.JsonPath;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 시드 T0 에는 2026-2(9) 성적이 확정 전이라, 확정 후 경우는 s1_grade_close 처럼 그 학기 강의를 모두 확정하고 확인합니다. */
+/** 시드 T0 에는 2026-2(9) 성적이 확정 전이라, 확정 후 경우는 성적 마감 오버레이(s1)를 적용하고 확인합니다. */
 @AutoConfigureMockMvc
 @Transactional
 class GradeReportControllerTest extends IntegrationTest {
@@ -38,17 +39,15 @@ class GradeReportControllerTest extends IntegrationTest {
     JwtProvider jwtProvider;
 
     @Autowired
-    JdbcTemplate jdbc;
+    DemoService demoService;
 
     private ResultActions grades(String stdNo) throws Exception {
         return mvc.perform(get("/api/me/grades").header("Authorization", Bearer.of(jwtProvider, stdNo, Role.STUDENT)));
     }
 
+    // 시드의 성적 마감(s1)을 테스트 트랜잭션 안에서 적용한다. 2026-2 강의가 모두 확정되고, 끝나면 롤백된다
     private void confirmSecondSemester() {
-        jdbc.update("""
-                UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = ?, cnfm_dtm = '2026-12-28 10:00:00'
-                 WHERE sem_no = ? AND grd_stat <> 'CONFIRMED'
-                """, Account.ADMIN, Semester.Y2026_SECOND);
+        demoService.applyScenario(SeedTime.S1);
     }
 
     @Test
@@ -86,25 +85,15 @@ class GradeReportControllerTest extends IntegrationTest {
         assertThat(counted).containsExactly(false, true);
         assertThat(retake).containsExactly(false, true);
 
-        // 누적 평점·이수 학점을 응답의 성적표로 다시 계산해도 같다(이전 F 제외, P/F 제외, 채플 제외)
-        List<Number> crdt =
-                JsonPath.read(body, "$.semesters[*].grades[?(@.counted == true && @.gradePoint != null)].crdt");
-        List<Number> point =
-                JsonPath.read(body, "$.semesters[*].grades[?(@.counted == true && @.gradePoint != null)].gradePoint");
-        double credits = 0;
-        double points = 0;
-        for (int i = 0; i < crdt.size(); i++) {
-            credits += crdt.get(i).doubleValue();
-            points += crdt.get(i).doubleValue() * point.get(i).doubleValue();
-        }
+        // s1 적용 후 시드 성적 37줄로 직접 계산한 값. 2024-1 이산수학 F(3학점)는 재수강해서 누적에서 빠진다
+        // 누적 평점 279.7 / 103 = 2.7155, 이수 학점 103 - 2026-1 F 3학점 = 100(채플 0.5 제외)
+        // 2024-1 학기 평점은 그 F 를 넣어 34.9 / 16 = 2.18
         Number gpa = JsonPath.read(body, "$.cumulativeGpa");
-        assertThat(gpa.doubleValue()).isCloseTo(points / credits, org.assertj.core.data.Offset.offset(0.005));
-
-        List<Number> earned = JsonPath.read(
-                body, "$.semesters[*].grades[?(@.counted == true && @.ltrGrd != 'F' && @.cmplType != 'CHAPEL')].crdt");
-        Number earnedCredits = JsonPath.read(body, "$.earnedCredits");
-        assertThat(earnedCredits.doubleValue())
-                .isEqualTo(earned.stream().mapToDouble(Number::doubleValue).sum());
+        Number earned = JsonPath.read(body, "$.earnedCredits");
+        List<Number> firstSemesterGpa = JsonPath.read(body, "$.semesters[?(@.yr == 2024 && @.semType == 'FIRST')].gpa");
+        assertThat(gpa.doubleValue()).isEqualTo(2.72);
+        assertThat(earned.doubleValue()).isEqualTo(100.0);
+        assertThat(firstSemesterGpa).extracting(Number::doubleValue).containsExactly(2.18);
     }
 
     @Test

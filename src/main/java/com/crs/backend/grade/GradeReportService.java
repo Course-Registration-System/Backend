@@ -49,44 +49,31 @@ public class GradeReportService {
                 .computeIfAbsent(row.semNo(), key -> new ArrayList<>())
                 .add(row));
         List<SemesterGrades> semesters = bySemester.values().stream()
-                .map(semRows -> new SemesterGrades(
-                        semRows.get(0).semNo(),
-                        semRows.get(0).yr(),
-                        semRows.get(0).semType(),
-                        semRows.stream().map(GradeReportService::toGradeRow).toList(),
-                        gpa(semRows, row -> true)))
+                .map(semRows -> {
+                    List<GradeRow> grades = semRows.stream().map(Row::grade).toList();
+                    Row first = semRows.get(0);
+                    return new SemesterGrades(
+                            first.semNo(), first.yr(), first.semType(), grades, gpa(grades, g -> true));
+                })
                 .toList();
 
-        BigDecimal earned = rows.stream()
-                .filter(row -> row.counted() && !"F".equals(row.ltrGrd()) && !"CHAPEL".equals(row.cmplType()))
-                .map(Row::crdt)
+        List<GradeRow> all = rows.stream().map(Row::grade).toList();
+        BigDecimal earned = all.stream()
+                .filter(g -> g.counted() && !"F".equals(g.ltrGrd()) && !"CHAPEL".equals(g.cmplType()))
+                .map(GradeRow::crdt)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new GradeReportResponse(semesters, gpa(rows, Row::counted), earned);
+        return new GradeReportResponse(semesters, gpa(all, GradeRow::counted), earned);
     }
 
-    private static BigDecimal gpa(List<Row> rows, Predicate<Row> include) {
+    private static BigDecimal gpa(List<GradeRow> grades, Predicate<GradeRow> include) {
         BigDecimal credits = BigDecimal.ZERO;
         BigDecimal points = BigDecimal.ZERO;
-        for (Row row : rows) {
-            if (row.gradePoint() != null && include.test(row)) {
-                credits = credits.add(row.crdt());
-                points = points.add(row.crdt().multiply(row.gradePoint()));
+        for (GradeRow g : grades) {
+            if (g.gradePoint() != null && include.test(g)) {
+                credits = credits.add(g.crdt());
+                points = points.add(g.crdt().multiply(g.gradePoint()));
             }
         }
         return credits.signum() == 0 ? null : points.divide(credits, 2, RoundingMode.HALF_UP);
-    }
-
-    private static GradeRow toGradeRow(Row row) {
-        return new GradeRow(
-                row.lecNo(),
-                row.crsCd(),
-                row.crsNm(),
-                row.crdt(),
-                row.cmplType(),
-                row.evalType(),
-                row.ltrGrd(),
-                row.gradePoint(),
-                row.retake(),
-                row.counted());
     }
 }

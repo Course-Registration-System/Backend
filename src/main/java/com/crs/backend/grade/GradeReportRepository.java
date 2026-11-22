@@ -1,7 +1,7 @@
 package com.crs.backend.grade;
 
 import com.crs.backend.academic.MaxCreditRepository;
-import java.math.BigDecimal;
+import com.crs.backend.grade.dto.GradeRow;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -11,20 +11,7 @@ import org.springframework.stereotype.Repository;
 public class GradeReportRepository {
 
     /** 성적표 한 줄과 그 줄이 속한 학기. */
-    public record Row(
-            int semNo,
-            int yr,
-            String semType,
-            int lecNo,
-            String crsCd,
-            String crsNm,
-            BigDecimal crdt,
-            String cmplType,
-            String evalType,
-            String ltrGrd,
-            BigDecimal gradePoint,
-            boolean retake,
-            boolean counted) {}
+    public record Row(int semNo, int yr, String semType, GradeRow grade) {}
 
     // 같은 과목을 여러 번 들었으면 가장 최근 시도만 counted = 1. 채플은 학기마다 따로 이수하므로 언제나 1
     private static final String SQL =
@@ -60,16 +47,17 @@ public class GradeReportRepository {
                         rs.getInt("sem_no"),
                         rs.getInt("yr"),
                         rs.getString("sem_type"),
-                        rs.getInt("lec_no"),
-                        rs.getString("crs_cd"),
-                        rs.getString("crs_nm"),
-                        rs.getBigDecimal("crdt"),
-                        rs.getString("cmpl_type"),
-                        rs.getString("eval_type"),
-                        rs.getString("ltr_grd"),
-                        rs.getBigDecimal("grade_point"),
-                        "Y".equals(rs.getString("retake_yn")),
-                        rs.getInt("counted") == 1),
+                        new GradeRow(
+                                rs.getInt("lec_no"),
+                                rs.getString("crs_cd"),
+                                rs.getString("crs_nm"),
+                                rs.getBigDecimal("crdt"),
+                                rs.getString("cmpl_type"),
+                                rs.getString("eval_type"),
+                                rs.getString("ltr_grd"),
+                                rs.getBigDecimal("grade_point"),
+                                "Y".equals(rs.getString("retake_yn")),
+                                rs.getInt("counted") == 1)),
                 stdNo);
     }
 }
