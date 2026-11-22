@@ -116,9 +116,15 @@ class EnrollmentConcurrencyTest extends IntegrationTest {
         assertThat(enrolledRows()).isZero();
     }
 
+    /** 1020020 과목을 들은 적 없는 재학생. 들은 적 있으면 재수강 규칙에 막힌다. */
     private List<String> attendingStudents() {
-        List<String> students = root.queryForList(
-                "SELECT std_no FROM student WHERE std_stat = 'ATTENDING' ORDER BY std_no LIMIT 10", String.class);
+        List<String> students = root.queryForList("""
+                SELECT s.std_no FROM student s
+                 WHERE s.std_stat = 'ATTENDING'
+                   AND NOT EXISTS (SELECT 1 FROM enrollment e JOIN lecture l ON l.lec_no = e.lec_no
+                                    WHERE e.std_no = s.std_no AND l.crs_cd = '1020020')
+                 ORDER BY s.std_no LIMIT 10
+                """, String.class);
         assertThat(students).hasSize(10);
         return students;
     }
