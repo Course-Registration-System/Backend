@@ -3,6 +3,8 @@ package com.crs.backend.academic;
 import com.crs.backend.academic.dto.MaxCreditItem;
 import com.crs.backend.grade.GradePoint;
 import com.crs.backend.user.StdStat;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -79,31 +81,37 @@ public class MaxCreditRepository {
         this.jdbc = jdbc;
     }
 
-    /** 대상 학기 바로 앞의 정규학기. 없으면 null. */
-    public Integer findPreviousRegular(int targetOrd) {
-        return jdbc
-                .queryForList(
-                        "SELECT s.sem_no FROM semester s WHERE s.sem_type IN ('FIRST', 'SECOND') AND " + SEM_ORD
-                                + " < :targetOrd ORDER BY " + SEM_ORD + " DESC LIMIT 1",
-                        new MapSqlParameterSource("targetOrd", targetOrd),
-                        Integer.class)
-                .stream()
-                .findFirst()
-                .orElse(null);
+    /** 대상 학기나 그 뒤 학기에 이미 시작된 일정이 있는지. 뒤 학기 일정이 시작됐으면 대상 학기는 지난 학기입니다. */
+    public boolean anyScheduleStartedFrom(int targetOrd, LocalDateTime now) {
+        Boolean started = jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM academic_schedule a JOIN semester s ON s.sem_no = a.sem_no WHERE "
+                        + SEM_ORD + " >= :targetOrd AND a.start_dtm <= :now)",
+                new MapSqlParameterSource("targetOrd", targetOrd).addValue("now", Timestamp.valueOf(now)),
+                Boolean.class);
+        return Boolean.TRUE.equals(started);
     }
 
-    /** 신청한 학생이 있는데 성적이 확정되지 않은 개설 강의. 예: "183 데이터베이스(1분반)" */
-    public List<String> findUnconfirmedLectures(int semNo) {
-        return jdbc.queryForList("""
+    /**
+     * 직전 정규학기부터 대상 학기 바로 앞까지(사이의 계절학기 포함) 신청한 학생이 있는데 성적이 확정되지 않은 개설 강의. 직전 정규학기가 없으면
+     * 대상 학기 앞의 모든 학기를 봅니다. 예: "183 데이터베이스(1분반)"
+     */
+    public List<String> findUnconfirmedLectures(int targetOrd) {
+        return jdbc.queryForList(
+                """
                 SELECT CONCAT(l.lec_no, ' ', c.crs_nm, '(', l.sect_no, '분반)')
                   FROM lecture l
                   JOIN course c ON c.crs_cd = l.crs_cd
-                 WHERE l.sem_no = :semNo
+                  JOIN semester s ON s.sem_no = l.sem_no
+                 WHERE %s < :targetOrd
+                   AND %s >= COALESCE((SELECT MAX(%s) FROM semester s
+                                        WHERE s.sem_type IN ('FIRST', 'SECOND') AND %s < :targetOrd), 0)
                    AND l.lec_stat = 'OPEN'
                    AND l.grd_stat <> 'CONFIRMED'
                    AND EXISTS (SELECT 1 FROM enrollment e WHERE e.lec_no = l.lec_no AND e.enrl_stat = 'ENROLLED')
                  ORDER BY l.lec_no
-                """, new MapSqlParameterSource("semNo", semNo), String.class);
+                """.formatted(SEM_ORD, SEM_ORD, SEM_ORD, SEM_ORD),
+                new MapSqlParameterSource("targetOrd", targetOrd),
+                String.class);
     }
 
     /**
@@ -135,38 +143,36 @@ public class MaxCreditRepository {
                 """.formatted(PROGRESS), new MapSqlParameterSource("targetOrd", targetOrd));
     }
 
+    /** 그 학기 최대학점을 모두 지웁니다. 다시 산정할 때 먼저 지워서, 이번 대상에서 빠진 학생(그사이 휴학·졸업)의 지난 값이 남지 않게 합니다. */
+    public void deleteBySemester(int semNo) {
+        jdbc.update(
+                "DELETE FROM semester_maximum_credit WHERE sem_no = :semNo", new MapSqlParameterSource("semNo", semNo));
+    }
+
     /**
      * 정규학기 최대학점. 재학생 전원, 마지막으로 다닌 정규학기 평점(2학년 1학기는 1학년 두 학기 평균)이 4.0 이상이면 21, 아니면 18(성적·평점
-     * 없음 포함, D3). 평점은 나누지 않고
-     * 학점×평점 합 ≥ 4.0×학점 합으로 비교해 반올림 오차를 없앱니다(D4). 다시 실행하면 새 값으로 바꿉니다.
+     * 없음 포함, D3). 평점은 나누지 않고 학점×평점 합 ≥ 4.0×학점 합으로 비교해 반올림 오차를 없앱니다(D4). 계절학기 성적은 보지 않습니다.
      */
-    public void upsertRegular(int semNo, int targetOrd) {
+    public void insertRegular(int semNo, int targetOrd) {
         jdbc.update(
                 """
                 INSERT INTO semester_maximum_credit (std_no, sem_no, max_crdt)
-                SELECT * FROM (
-                    SELECT st.std_no, :semNo AS sem_no,
-                           CASE WHEN p.crd > 0 AND p.pts >= 4.0 * p.crd THEN 21 ELSE 18 END AS new_max
-                      FROM student st
-                      LEFT JOIN (%s) p ON p.std_no = st.std_no
-                     WHERE st.std_stat = 'ATTENDING'
-                ) AS calc
-                ON DUPLICATE KEY UPDATE max_crdt = calc.new_max
+                SELECT st.std_no, :semNo,
+                       CASE WHEN p.crd > 0 AND p.pts >= 4.0 * p.crd THEN 21 ELSE 18 END
+                  FROM student st
+                  LEFT JOIN (%s) p ON p.std_no = st.std_no
+                 WHERE st.std_stat = 'ATTENDING'
                 """.formatted(LAST_REGULAR_GPA),
                 new MapSqlParameterSource("semNo", semNo).addValue("targetOrd", targetOrd));
     }
 
     /** 계절학기 최대학점. 재학생 6, 휴학생 3. */
-    public void upsertSeasonal(int semNo) {
+    public void insertSeasonal(int semNo) {
         jdbc.update("""
                 INSERT INTO semester_maximum_credit (std_no, sem_no, max_crdt)
-                SELECT * FROM (
-                    SELECT st.std_no, :semNo AS sem_no,
-                           CASE st.std_stat WHEN 'ATTENDING' THEN 6 ELSE 3 END AS new_max
-                      FROM student st
-                     WHERE st.std_stat IN ('ATTENDING', 'ON_LEAVE')
-                ) AS calc
-                ON DUPLICATE KEY UPDATE max_crdt = calc.new_max
+                SELECT st.std_no, :semNo, CASE st.std_stat WHEN 'ATTENDING' THEN 6 ELSE 3 END
+                  FROM student st
+                 WHERE st.std_stat IN ('ATTENDING', 'ON_LEAVE')
                 """, new MapSqlParameterSource("semNo", semNo));
     }
 

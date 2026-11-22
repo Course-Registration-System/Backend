@@ -78,6 +78,7 @@ public class SemesterService {
         for (ScheduleResponse other : semesterRepository.findSchedulesSharingYear(semNo, request.tgtYrLvl())) {
             checkAgainst(request, other);
         }
+        checkSeasonalGrade(get(semNo), request);
         int schdNo = semesterRepository.insertSchedule(
                 semNo, request.schdType(), request.tgtYrLvl(), request.startDtm(), request.endDtm());
         return semesterRepository.findSchedule(schdNo).orElseThrow();
@@ -113,6 +114,32 @@ public class SemesterService {
         }
         if (order < 0 && other.startDtm().isBefore(request.endDtm())) {
             throw new BusinessException(ErrorCode.SCHEDULE_ORDER, describe(other) + "이 시작하기 전에 끝나야 합니다.");
+        }
+    }
+
+    /**
+     * 계절학기 성적입력은 다음 정규학기 장바구니 시작 전에 끝나야 합니다(장바구니가 없으면 수강신청 시작). 정규학기 최대학점 산정이 계절학기
+     * 성적 확정을 기다리기 때문입니다. 앞뒤 학기가 아직 없거나 일정이 없으면 검사하지 않습니다.
+     */
+    private void checkSeasonalGrade(SemesterResponse semester, ScheduleRequest request) {
+        int targetOrd = MaxCreditService.order(semester);
+        if (!semester.regular() && request.schdType() == SchdType.GRADE) {
+            semesterRepository
+                    .findNextRegularCartStart(targetOrd)
+                    .filter(cartStart -> request.endDtm().isAfter(cartStart))
+                    .ifPresent(cartStart -> {
+                        throw new BusinessException(
+                                ErrorCode.SCHEDULE_ORDER, "계절학기 성적입력은 다음 정규학기 장바구니 시작(" + cartStart + ") 전에 끝나야 합니다.");
+                    });
+        }
+        if (semester.regular() && (request.schdType() == SchdType.CART || request.schdType() == SchdType.ENROLL)) {
+            semesterRepository
+                    .findPreviousSeasonalGradeEnd(targetOrd)
+                    .filter(gradeEnd -> request.startDtm().isBefore(gradeEnd))
+                    .ifPresent(gradeEnd -> {
+                        throw new BusinessException(
+                                ErrorCode.SCHEDULE_ORDER, "직전 계절학기 성적입력(" + gradeEnd + "까지)이 끝난 뒤에 시작해야 합니다.");
+                    });
         }
     }
 

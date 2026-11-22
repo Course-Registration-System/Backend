@@ -143,6 +143,21 @@ class MaxCreditSeedTest extends IntegrationTest {
     }
 
     @Test
+    void 뒤_학기_일정이_시작된_지난_학기는_산정하지_않는다() throws Exception {
+        // 일정이 없는 2022-1 을 만들어도, 뒤 학기(2026 겨울 등)의 일정이 이미 시작돼 지난 학기다
+        jdbc.update("INSERT INTO semester (yr, sem_type) VALUES (2022, 'FIRST')");
+        int past = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
+        List<Map<String, Object>> before = students();
+
+        calculate(past)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MAX_CREDIT_CLOSED"));
+
+        assertThat(students()).isEqualTo(before);
+        assertThat(maxCredits(past)).isEmpty();
+    }
+
+    @Test
     void 결과_목록을_조회한다() throws Exception {
         SeedTime.apply(dataSource, SeedTime.S1);
         mvc.perform(get("/api/admin/semesters/" + Semester.Y2027_FIRST + "/max-credits")

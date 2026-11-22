@@ -136,6 +136,33 @@ public class SemesterRepository {
                 tgtYrLvl);
     }
 
+    /**
+     * 계절학기 바로 다음 학기가 정규학기면 그 학기의 장바구니 시작. 장바구니 일정이 없으면 수강신청 시작으로 대신합니다. 다음 학기가 없거나
+     * 일정이 없으면 비어 있습니다.
+     */
+    public Optional<LocalDateTime> findNextRegularCartStart(int targetOrd) {
+        return queryTime("""
+                SELECT MIN(a.start_dtm) FROM academic_schedule a
+                 WHERE a.schd_type IN ('CART', 'ENROLL')
+                   AND a.sem_no = (SELECT IF(s.sem_type IN ('FIRST', 'SECOND'), s.sem_no, NULL) FROM semester s
+                                    WHERE %s > ? ORDER BY %s LIMIT 1)
+                """.formatted(MaxCreditRepository.SEM_ORD, MaxCreditRepository.SEM_ORD), targetOrd);
+    }
+
+    /** 정규학기 바로 앞 학기가 계절학기면 그 학기의 성적입력 종료. 앞 학기가 없거나 일정이 없으면 비어 있습니다. */
+    public Optional<LocalDateTime> findPreviousSeasonalGradeEnd(int targetOrd) {
+        return queryTime("""
+                SELECT MAX(a.end_dtm) FROM academic_schedule a
+                 WHERE a.schd_type = 'GRADE'
+                   AND a.sem_no = (SELECT IF(s.sem_type IN ('SUMMER', 'WINTER'), s.sem_no, NULL) FROM semester s
+                                    WHERE %s < ? ORDER BY %s DESC LIMIT 1)
+                """.formatted(MaxCreditRepository.SEM_ORD, MaxCreditRepository.SEM_ORD), targetOrd);
+    }
+
+    private Optional<LocalDateTime> queryTime(String sql, int targetOrd) {
+        return Optional.ofNullable(jdbc.queryForObject(sql, LocalDateTime.class, targetOrd));
+    }
+
     public int insertSchedule(
             int semNo, SchdType schdType, Integer tgtYrLvl, LocalDateTime startDtm, LocalDateTime endDtm) {
         KeyHolder key = new GeneratedKeyHolder();

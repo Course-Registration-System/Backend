@@ -1,4 +1,4 @@
--- s1 성적 마감(2026-12-23 ~ 2027-01-15): 2026-2 확정, 진급·졸업·복학, 2027 신입생 계정, 2027-1 최대학점. tools/seed/build_seed.py 로 생성한다.
+-- s1 성적 마감(2026-12-23 ~ 2027-01-17): 2026-2 확정, 겨울학기 성적 확정, 진급·졸업·복학, 2027 신입생 계정, 2027-1 최대학점. tools/seed/build_seed.py 로 생성한다.
 
 -- 앞 단계까지 적용한 뒤 한 번 적용한다. 시연 중 앱 기능으로 이미 처리한 내용(입력한 점수, 계산한 최대학점, 만든 계정)은 덮어쓰지 않는다.
 
@@ -15,6 +15,16 @@ INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr, l
 ON DUPLICATE KEY UPDATE ltr_grd = ltr_grd;
 
 UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = '9001', cnfm_dtm = '2026-12-28 10:00:00' WHERE sem_no = 9 AND grd_stat <> 'CONFIRMED';
+
+INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr, ltr_grd) VALUES
+  ('20230003', 183, 81, 77, 80, 100, 81, 'B-'),
+  ('20260004', 183, 75, 79, 83, 92, 79, 'C+'),
+  ('20260001', 184, 77, 96, 89, 97, 87, 'B+'),
+  ('20260003', 184, 89, 75, 92, 95, 84, 'B0'),
+  ('20250002', 185, 84, 90, 91, 92, 87, 'B+')
+ON DUPLICATE KEY UPDATE ltr_grd = ltr_grd;
+
+UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = '9001', cnfm_dtm = '2027-01-16 17:00:00' WHERE sem_no = 10 AND grd_stat <> 'CONFIRMED';
 
 UPDATE student SET yr_lvl = 4, std_stat = 'GRADUATED' WHERE std_no = '20230001';
 
