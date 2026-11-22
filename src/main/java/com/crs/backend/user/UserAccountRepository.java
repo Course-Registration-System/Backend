@@ -144,6 +144,10 @@ public class UserAccountRepository {
         jdbc.update("UPDATE professor SET dept_no = ?, office = ? WHERE prof_no = ?", deptNo, office, profNo);
     }
 
+    public void updatePassword(String usrNo, String pwdHash) {
+        jdbc.update("UPDATE user_account SET pwd = ? WHERE usr_no = ?", pwdHash, usrNo);
+    }
+
     public void deactivate(String usrNo) {
         jdbc.update("UPDATE user_account SET acct_stat = 'INACTIVE' WHERE usr_no = ?", usrNo);
     }

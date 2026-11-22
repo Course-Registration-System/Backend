@@ -1,6 +1,7 @@
 package com.crs.backend.user;
 
 import com.crs.backend.common.auth.Role;
+import com.crs.backend.user.dto.PasswordResetRequest;
 import com.crs.backend.user.dto.UserCreateRequest;
 import com.crs.backend.user.dto.UserResponse;
 import com.crs.backend.user.dto.UserUpdateRequest;
@@ -49,6 +50,12 @@ public class UserAccountController {
     }
 
     // user 비활성화
+    @PatchMapping("/{usrNo}/password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetPassword(@PathVariable String usrNo, @Valid @RequestBody PasswordResetRequest request) {
+        userAccountService.resetPassword(usrNo, request);
+    }
+
     @PatchMapping("/{usrNo}/deactivate")
     public UserResponse deactivate(@PathVariable String usrNo) {
         return userAccountService.deactivate(usrNo);

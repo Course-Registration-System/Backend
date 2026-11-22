@@ -4,11 +4,15 @@ import com.crs.backend.common.auth.CurrentUser;
 import com.crs.backend.user.dto.LoginRequest;
 import com.crs.backend.user.dto.LoginResponse;
 import com.crs.backend.user.dto.MyInfoResponse;
+import com.crs.backend.user.dto.PasswordChangeRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 로그아웃 API 는 없습니다. 프론트가 저장한 토큰을 지우면 됩니다. */
@@ -32,5 +36,12 @@ public class AuthController {
     @GetMapping("/me")
     public MyInfoResponse me(CurrentUser user) {
         return authService.myInfo(user);
+    }
+
+    // 본인 비밀번호 변경
+    @PatchMapping("/password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changePassword(CurrentUser user, @Valid @RequestBody PasswordChangeRequest request) {
+        authService.changePassword(user, request);
     }
 }

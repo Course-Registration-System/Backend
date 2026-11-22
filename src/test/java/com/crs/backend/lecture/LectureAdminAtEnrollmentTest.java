@@ -35,7 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 @TestPropertySource(properties = "crs.clock.fixed-at=" + SeedTime.T1)
 class LectureAdminAtEnrollmentTest extends IntegrationTest {
 
-    // 198번 컴파일러의 지금 강의시간 그대로
+    // 컴파일러(ONE_SEAT_LEFT)의 지금 강의시간 그대로
     private static final String COMPILER = """
             {"profNo": "100002", "cap": %d, "engLec": false, "relGrdExmp": false,
              "timeSlots": [
@@ -97,7 +97,7 @@ class LectureAdminAtEnrollmentTest extends IntegrationTest {
 
     @Test
     void 수강신청이_시작돼도_강의실은_배정할_수_있다() throws Exception {
-        // 225번 창업과혁신: 대면인데 강의실 미배정(월·수 13:30~14:45, 교수 100004)
+        // 창업과혁신(NO_ROOM): 대면인데 강의실 미배정(월·수 13:30~14:45, 교수 100004)
         update(Lecture.NO_ROOM, """
                         {"profNo": "100004", "cap": 60, "engLec": false, "relGrdExmp": false,
                          "timeSlots": [
@@ -121,7 +121,7 @@ class LectureAdminAtEnrollmentTest extends IntegrationTest {
                 jdbc.queryForObject("SELECT enrl_cnt FROM lecture WHERE lec_no = ?", Integer.class, Lecture.FULL);
         assertThat(enrolled).isPositive();
 
-        // 191번 컴퓨터구조(교수 100001, 정보관 303호 화·목 10:30~11:45)의 강의시간은 그대로 두고 정원만 줄인다
+        // 컴퓨터구조(FULL, 교수 100001, 정보관 303호 화·목 10:30~11:45)의 강의시간은 그대로 두고 정원만 줄인다
         String body = """
                 {"profNo": "100001", "cap": %d, "engLec": false, "relGrdExmp": false,
                  "timeSlots": [
