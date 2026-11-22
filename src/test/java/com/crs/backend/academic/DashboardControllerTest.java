@@ -111,7 +111,7 @@ class DashboardControllerTest extends IntegrationTest {
 
     @Test
     void 학기를_비우면_신청_대상_학기_없으면_현재_학기() throws Exception {
-        TestClock.at(clock, "2027-01-05T10:00:00"); // 2027-1 장바구니 전, 현재 학기는 2026-2
+        TestClock.at(clock, TestClock.CART); // 현재 학기는 2026-2
         dashboard("").andExpect(jsonPath("$.semNo").value(Semester.Y2027_FIRST));
         TestClock.at(clock, "2027-03-09T17:00:00"); // 2027-1 정정이 끝난 순간
         dashboard("").andExpect(jsonPath("$.semNo").value(Semester.Y2026_SECOND));
