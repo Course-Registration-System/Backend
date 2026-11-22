@@ -3,6 +3,8 @@ package com.crs.backend.academic;
 import com.crs.backend.academic.dto.MaxCreditItem;
 import com.crs.backend.grade.GradePoint;
 import com.crs.backend.user.StdStat;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -77,6 +79,16 @@ public class MaxCreditRepository {
 
     public MaxCreditRepository(NamedParameterJdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    /** 대상 학기나 그 뒤 학기에 이미 시작된 일정이 있는지. 뒤 학기 일정이 시작됐으면 대상 학기는 지난 학기입니다. */
+    public boolean anyScheduleStartedFrom(int targetOrd, LocalDateTime now) {
+        Boolean started = jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM academic_schedule a JOIN semester s ON s.sem_no = a.sem_no WHERE "
+                        + SEM_ORD + " >= :targetOrd AND a.start_dtm <= :now)",
+                new MapSqlParameterSource("targetOrd", targetOrd).addValue("now", Timestamp.valueOf(now)),
+                Boolean.class);
+        return Boolean.TRUE.equals(started);
     }
 
     /** 대상 학기 바로 앞의 정규학기. 없으면 null. */

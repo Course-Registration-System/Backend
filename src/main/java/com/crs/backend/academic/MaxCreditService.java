@@ -19,7 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
  * 계산하고, 졸업은 되돌리지 않으며, 최대학점은 그 학기 행을 지우고 새로 넣습니다.
  *
  * <p>다시 실행할 수 있는 건 그 학기 일정(장바구니)이 시작되기 전까지입니다. 신청 도중에 바꾸면 학년별 수강신청일과 이미 쓰고 있는 최대학점이
- * 바뀌기 때문입니다.
+ * 바뀌기 때문입니다. 뒤 학기 일정이 이미 시작됐으면 지난 학기라 막습니다. 일정 없는 지난 학기를 산정하면 학년이 그 시점 기준으로 되돌아가기
+ * 때문입니다.
  */
 @Service
 public class MaxCreditService {
@@ -40,10 +41,10 @@ public class MaxCreditService {
     @Transactional
     public MaxCreditResult calculate(int semNo) {
         SemesterResponse semester = get(semNo);
-        if (semesterRepository.anyScheduleStarted(semNo, LocalDateTime.now(clock))) {
+        int targetOrd = order(semester);
+        if (maxCreditRepository.anyScheduleStartedFrom(targetOrd, LocalDateTime.now(clock))) {
             throw new BusinessException(ErrorCode.MAX_CREDIT_CLOSED);
         }
-        int targetOrd = order(semester);
         int graduated = 0;
         maxCreditRepository.deleteBySemester(semNo);
 
