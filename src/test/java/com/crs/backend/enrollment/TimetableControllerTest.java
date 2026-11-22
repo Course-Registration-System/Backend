@@ -74,7 +74,7 @@ class TimetableControllerTest extends IntegrationTest {
 
     @Test
     void 학기를_비우면_신청_대상_학기를_본다() throws Exception {
-        TestClock.at(clock, "2027-01-05T10:00:00"); // 2027-1 장바구니 전, 현재 학기는 2026-2
+        TestClock.at(clock, TestClock.CART); // 현재 학기는 2026-2
         timetable(Student.DEMO, Role.STUDENT, "")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.semNo").value(11));
