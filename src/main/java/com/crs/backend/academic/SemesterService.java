@@ -64,12 +64,16 @@ public class SemesterService {
         return semesterRepository.findSchedules(semNo);
     }
 
-    // ②~④ 일정 등록: 학기 행을 잠근 뒤 기간·겹침·순서를 검사하고 저장한다
+    // ②~④ 일정 등록: 학기 행을 잠근 뒤 기간·시작 시각·겹침·순서를 검사하고 저장한다
     @Transactional
     public ScheduleResponse addSchedule(int semNo, ScheduleRequest request) {
         lock(semNo);
         if (!request.startDtm().isBefore(request.endDtm())) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "시작일시는 종료일시보다 빨라야 합니다.");
+        }
+        // 시작일시가 지난 일정은 넣는 즉시 장바구니·신청 판정이 바뀌고, 시작된 일정은 지울 수도 없어서 막는다
+        if (!request.startDtm().isAfter(now())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "시작일시가 지난 일정은 등록할 수 없습니다.");
         }
         for (ScheduleResponse other : semesterRepository.findSchedulesSharingYear(semNo, request.tgtYrLvl())) {
             checkAgainst(request, other);

@@ -92,12 +92,13 @@ public class SemesterRepository {
     }
 
     /**
-     * 현재 학기를 한 문장으로 바꿉니다. 현재 학기는 식 기반 UNIQUE 로 하나만 허용되어, 새 학기를 먼저 Y 로 바꾸면 이전 학기와 부딪혀
-     * 실패합니다.
+     * 현재 학기를 한 문장으로 바꿉니다. 현재 학기는 식 기반 UNIQUE 로 하나만 허용되고 MySQL 은 UNIQUE 를 행마다 바로 검사하므로, 기존 현재
+     * 학기를 먼저 N 으로 바꾸도록 ORDER BY 로 순서를 정합니다. 순서가 없으면 번호가 작은 학기로 바꿀 때 새 학기가 먼저 Y 가 되어 실패합니다.
      */
     public void changeCurrent(int semNo) {
         jdbc.update(
-                "UPDATE semester SET cur_sem_yn = IF(sem_no = ?, 'Y', 'N') WHERE cur_sem_yn = 'Y' OR sem_no = ?",
+                "UPDATE semester SET cur_sem_yn = IF(sem_no = ?, 'Y', 'N') WHERE cur_sem_yn = 'Y' OR sem_no = ?"
+                        + " ORDER BY cur_sem_yn = 'Y' DESC",
                 semNo,
                 semNo);
     }

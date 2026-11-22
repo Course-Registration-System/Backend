@@ -106,7 +106,10 @@ public class MaxCreditRepository {
                 """, new MapSqlParameterSource("semNo", semNo), String.class);
     }
 
-    /** 학년 = min(4, 다닌 정규학기 수 ÷ 2 버림 + 1). 재학·휴학생 전원을 이력에서 다시 계산합니다(D25). */
+    /**
+     * 학년 = min(4, 다닌 정규학기 수 ÷ 2 버림 + 1). 재학·휴학생 전원을 이력에서 다시 계산합니다(D25). 관리자가 USR-02 로 고친 학년도 이때
+     * 이력 기준으로 다시 바뀝니다.
+     */
     public void recalculateYearLevels(int targetOrd) {
         jdbc.update("""
                 UPDATE student st

@@ -5,6 +5,8 @@ import com.crs.backend.academic.dto.MaxCreditResult;
 import com.crs.backend.academic.dto.SemesterResponse;
 import com.crs.backend.common.BusinessException;
 import com.crs.backend.common.ErrorCode;
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>복학 처리처럼 학적이 바뀌는 시기가 여러 번이라 몇 번이든 다시 실행할 수 있고, 다시 실행해도 결과가 같습니다. 학년은 이력에서 다시
  * 계산하고, 졸업은 되돌리지 않으며, 최대학점은 새 값으로 바꿉니다.
+ *
+ * <p>다시 실행할 수 있는 건 그 학기 일정(장바구니)이 시작되기 전까지입니다. 신청 도중에 바꾸면 학년별 수강신청일과 이미 쓰고 있는 최대학점이
+ * 바뀌기 때문입니다.
  */
 @Service
 public class MaxCreditService {
@@ -23,16 +28,22 @@ public class MaxCreditService {
 
     private final MaxCreditRepository maxCreditRepository;
     private final SemesterRepository semesterRepository;
+    private final Clock clock;
 
-    public MaxCreditService(MaxCreditRepository maxCreditRepository, SemesterRepository semesterRepository) {
+    public MaxCreditService(
+            MaxCreditRepository maxCreditRepository, SemesterRepository semesterRepository, Clock clock) {
         this.maxCreditRepository = maxCreditRepository;
         this.semesterRepository = semesterRepository;
+        this.clock = clock;
     }
 
     @Transactional
     public MaxCreditResult calculate(int semNo) {
         long started = System.nanoTime();
         SemesterResponse semester = get(semNo);
+        if (semesterRepository.anyScheduleStarted(semNo, LocalDateTime.now(clock))) {
+            throw new BusinessException(ErrorCode.MAX_CREDIT_CLOSED);
+        }
         int targetOrd = order(semester);
         int graduated = 0;
 
