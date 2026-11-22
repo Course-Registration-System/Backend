@@ -10,15 +10,16 @@
 결과: build/experiment/<규모>/ 에 results.csv(응답 시간), extras.csv(쓰기 비용·인덱스 크기·갱신 시간·V3), explain/, env.txt
 
 쿼리
-  Q1 학생 한 명의 전체 성적표(GRD-03 과 같은 SQL)
-  Q2 한 학기 전체 학생의 학기 평점(최대학점 산정의 입력)
-  Q3 학과·학기별 학기 평점 분포(전체 집계)
+  Q1 학생 한 명의 전체 성적표(GradeReportRepository 그대로)
+  Q2 최대학점 산정이 읽는 학생별 평점 재료(MaxCreditRepository.LAST_REGULAR_GPA 그대로)
+  Q3 학과·학기별 학기 평점 분포(앱에 없는 통계 화면을 가정한 전체 집계)
 비교군
   V0  grade(lec_no) 인덱스 없음
   V1  현재 스키마(ix_grade_lec = grade(lec_no))
   V1c 커버링 인덱스 grade(lec_no, ltr_grd)
   V2  V1 + 학생·학기별 평점 요약 테이블(Q2·Q3 만. Q1 의 누적 평점은 재수강을 빼야 해서 요약 테이블로 못 낸다)
-  V3  최대학점 산정: 학생별 SELECT·INSERT 반복 vs INSERT ... SELECT 한 문장
+  V3  최대학점 산정(insertRegular): 학생별 SELECT·INSERT 반복 vs INSERT ... SELECT 한 문장
+비교군마다 쿼리 결과가 같은지 먼저 확인하고 잰다.
 """
 import argparse
 import csv
@@ -34,26 +35,25 @@ from load_bulk import root_password  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 
-# GradePoint.sql 과 MaxCreditRepository.SEM_ORD 를 그대로 옮긴 식. 앱과 같은 SQL 을 재야 하므로 바꾸면 같이 바꾼다
-GP = ("CASE g.ltr_grd WHEN 'A+' THEN 4.5 WHEN 'A0' THEN 4.3 WHEN 'A-' THEN 4.0 WHEN 'B+' THEN 3.5 WHEN 'B0' THEN 3.3"
-      " WHEN 'B-' THEN 3.0 WHEN 'C+' THEN 2.5 WHEN 'C0' THEN 2.3 WHEN 'C-' THEN 2.0 WHEN 'D+' THEN 1.5"
-      " WHEN 'D0' THEN 1.3 WHEN 'D-' THEN 1.0 ELSE 0 END")
+
+# 앱 SQL 을 그대로 옮긴다. 식은 GradePoint.sql·MaxCreditRepository.SEM_ORD, Q1 은 GradeReportRepository(#28),
+# Q2·V3 는 MaxCreditRepository 의 LAST_REGULAR_GPA·insertRegular(#32)다. 앱 SQL 이 바뀌면 같이 바꾼다
+def gp(col):
+    return (f"CASE {col} WHEN 'A+' THEN 4.5 WHEN 'A0' THEN 4.3 WHEN 'A-' THEN 4.0 WHEN 'B+' THEN 3.5 WHEN 'B0' THEN 3.3"
+            " WHEN 'B-' THEN 3.0 WHEN 'C+' THEN 2.5 WHEN 'C0' THEN 2.3 WHEN 'C-' THEN 2.0 WHEN 'D+' THEN 1.5"
+            " WHEN 'D0' THEN 1.3 WHEN 'D-' THEN 1.0 ELSE 0 END")
+
+
 SEM_ORD = "(s.yr * 10 + FIELD(s.sem_type, 'FIRST', 'SUMMER', 'SECOND', 'WINTER'))"
 
-STUDENT = "20240001"  # 2024 입학, 가장 많은 학기를 다닌 학생
-SEMESTER = 8  # 2026-2, 마지막 정규학기
-
-# 등급제·확정 강의의 학생·학기별 학점 합과 학점×평점 합. Q2·Q3·V2·V3 가 모두 이 묶음을 쓴다
-GRADED = f"""
-  FROM lecture l
-  JOIN course c ON c.crs_cd = l.crs_cd
-  JOIN grade g ON g.lec_no = l.lec_no
- WHERE l.grd_stat = 'CONFIRMED' AND c.eval_type = 'GRADE' AND g.ltr_grd IS NOT NULL"""
+STUDENT = "20240001"  # 2024 입학생. 대량 데이터에서 가장 오래 다닌 입학 연도(정규 6학기 + 계절 2학기)
+SEMESTER = 8  # 2026-2. 요약 테이블을 한 학기만 다시 만들 때 쓴다
+TARGET_ORD = 20271  # 2027-1 최대학점 산정. 대량 데이터의 마지막 학기(2026-2) 다음 학기
 
 Q1 = f"""
 SELECT s.sem_no, s.yr, s.sem_type, l.lec_no, l.crs_cd, c.crs_nm, c.crdt, c.cmpl_type, c.eval_type,
        g.ltr_grd, e.retake_yn,
-       CASE WHEN c.eval_type = 'GRADE' THEN {GP} END AS grade_point,
+       CASE WHEN c.eval_type = 'GRADE' THEN {gp("g.ltr_grd")} END AS grade_point,
        CASE WHEN c.cmpl_type = 'CHAPEL' THEN 1
             WHEN ROW_NUMBER() OVER (PARTITION BY l.crs_cd ORDER BY {SEM_ORD} DESC) = 1 THEN 1
             ELSE 0 END AS counted
@@ -68,22 +68,78 @@ SELECT s.sem_no, s.yr, s.sem_type, l.lec_no, l.crs_cd, c.crs_nm, c.crdt, c.cmpl_
    AND g.ltr_grd IS NOT NULL
  ORDER BY {SEM_ORD}, c.crs_nm, l.sect_no"""
 
-Q2 = f"SELECT g.std_no, SUM(c.crdt * {GP}) / SUM(c.crdt) AS gpa{GRADED} AND l.sem_no = {SEMESTER} GROUP BY g.std_no"
+
+def last_regular_gpa(student=None):
+    """MaxCreditRepository.LAST_REGULAR_GPA. student 를 주면 그 학생만 본다(V3 학생별 반복)."""
+    only = f"\n       AND e.std_no = '{student}'" if student else ""
+    return f"""
+WITH reg AS (
+    SELECT e.std_no, {SEM_ORD} AS sem_ord, c.crdt, c.eval_type, g.ltr_grd
+      FROM enrollment e
+      JOIN lecture l ON l.lec_no = e.lec_no
+      JOIN semester s ON s.sem_no = l.sem_no
+      JOIN course c ON c.crs_cd = l.crs_cd
+      JOIN grade g ON g.std_no = e.std_no AND g.lec_no = e.lec_no
+     WHERE e.enrl_stat = 'ENROLLED'
+       AND l.grd_stat = 'CONFIRMED'
+       AND s.sem_type IN ('FIRST', 'SECOND')
+       AND {SEM_ORD} < {TARGET_ORD}{only}
+), terms AS (
+    SELECT std_no, MAX(sem_ord) AS last_ord, COUNT(DISTINCT sem_ord) AS term_cnt FROM reg GROUP BY std_no
+)
+SELECT r.std_no,
+       SUM(CASE WHEN r.eval_type = 'GRADE' THEN r.crdt END) AS crd,
+       SUM(CASE WHEN r.eval_type = 'GRADE' THEN r.crdt * ({gp("r.ltr_grd")}) END) AS pts
+  FROM reg r
+  JOIN terms t ON t.std_no = r.std_no
+ WHERE t.term_cnt = 2 OR r.sem_ord = t.last_ord
+ GROUP BY r.std_no"""
+
+
+# 학생마다 마지막으로 다닌 정규학기(2학년 1학기는 1학년 두 학기)의 등급제 학점 합과 학점×평점 합
+Q2 = last_regular_gpa()
 
 Q3 = f"""
 SELECT st.dept_no, x.sem_no, FLOOR(x.gpa * 2) / 2 AS bucket, COUNT(*) AS students
-  FROM (SELECT g.std_no, l.sem_no, SUM(c.crdt * {GP}) / SUM(c.crdt) AS gpa{GRADED} GROUP BY g.std_no, l.sem_no) x
+  FROM (SELECT g.std_no, l.sem_no, SUM(c.crdt * {gp("g.ltr_grd")}) / SUM(c.crdt) AS gpa
+          FROM lecture l
+          JOIN course c ON c.crs_cd = l.crs_cd
+          JOIN grade g ON g.lec_no = l.lec_no
+         WHERE l.grd_stat = 'CONFIRMED' AND c.eval_type = 'GRADE' AND g.ltr_grd IS NOT NULL
+         GROUP BY g.std_no, l.sem_no) x
   JOIN student st ON st.std_no = x.std_no
  GROUP BY st.dept_no, x.sem_no, bucket"""
 
-Q2_SUMMARY = f"SELECT std_no, pt_sum / crdt_sum AS gpa FROM semester_gpa WHERE sem_no = {SEMESTER}"
+# V2 요약 테이블: 학생·학기별 등급제 학점 합(crd)과 학점×평점 합(pts). P/F 만 들은 학기도 남겨야 2학년 1학기 판정이 앱과 같다
+SUMMARY_SELECT = f"""
+SELECT e.std_no, l.sem_no, {SEM_ORD} AS sem_ord, s.sem_type IN ('FIRST', 'SECOND') AS regular,
+       SUM(CASE WHEN c.eval_type = 'GRADE' THEN c.crdt END) AS crd,
+       SUM(CASE WHEN c.eval_type = 'GRADE' THEN c.crdt * ({gp("g.ltr_grd")}) END) AS pts
+  FROM enrollment e
+  JOIN lecture l ON l.lec_no = e.lec_no
+  JOIN semester s ON s.sem_no = l.sem_no
+  JOIN course c ON c.crs_cd = l.crs_cd
+  JOIN grade g ON g.std_no = e.std_no AND g.lec_no = e.lec_no
+ WHERE e.enrl_stat = 'ENROLLED' AND l.grd_stat = 'CONFIRMED'"""
+SUMMARY_GROUP = " GROUP BY e.std_no, l.sem_no"
+
+Q2_SUMMARY = f"""
+WITH terms AS (
+    SELECT std_no, MAX(sem_ord) AS last_ord, COUNT(*) AS term_cnt FROM semester_gpa
+     WHERE regular AND sem_ord < {TARGET_ORD} GROUP BY std_no
+)
+SELECT x.std_no, SUM(x.crd) AS crd, SUM(x.pts) AS pts
+  FROM semester_gpa x
+  JOIN terms t ON t.std_no = x.std_no
+ WHERE x.regular AND x.sem_ord < {TARGET_ORD} AND (t.term_cnt = 2 OR x.sem_ord = t.last_ord)
+ GROUP BY x.std_no"""
+
 Q3_SUMMARY = """
-SELECT st.dept_no, x.sem_no, FLOOR(x.pt_sum / x.crdt_sum * 2) / 2 AS bucket, COUNT(*) AS students
+SELECT st.dept_no, x.sem_no, FLOOR(x.pts / x.crd * 2) / 2 AS bucket, COUNT(*) AS students
   FROM semester_gpa x
   JOIN student st ON st.std_no = x.std_no
+ WHERE x.crd > 0
  GROUP BY st.dept_no, x.sem_no, bucket"""
-
-SUMMARY_SELECT = f"SELECT g.std_no, l.sem_no, SUM(c.crdt) AS crdt_sum, SUM(c.crdt * {GP}) AS pt_sum{GRADED}"
 
 QUERIES = {
     "V0": {"Q1": Q1, "Q2": Q2, "Q3": Q3},
@@ -143,6 +199,16 @@ def set_variant(db, variant):
     db.run("ANALYZE TABLE grade, lecture, course, enrollment, student;")
 
 
+def canonical(db, sql):
+    """결과 비교용. 행 순서와 소수 표기(18.0 / 18.00) 차이는 무시한다."""
+    def norm(v):
+        try:
+            return f"{float(v):.6f}"
+        except ValueError:
+            return v
+    return sorted(tuple(norm(v) for v in row) for row in db.rows(sql))
+
+
 def measure(db, variant, query_id, sql, runs):
     """콜드 1회 + 웜 runs 회. 서버가 잰 문장 시간(performance_schema, 네트워크·클라이언트 제외)을 쓴다."""
     db.restart()
@@ -165,7 +231,7 @@ def median_elapsed(db, sql, times=3):
     return round(statistics.median(db.elapsed(sql) for _ in range(times)), 1)
 
 
-def write_cost(db, variant):
+def write_cost(db):
     """grade 전체를 인덱스 구성이 같은 빈 테이블에 다시 넣는 시간. 보조 인덱스가 쓰기를 얼마나 늦추는지 본다."""
     db.run("DROP TABLE IF EXISTS grade_w; CREATE TABLE grade_w LIKE grade;")
     took = median_elapsed(db, "TRUNCATE grade_w; INSERT INTO grade_w SELECT * FROM grade;")
@@ -182,30 +248,35 @@ def index_sizes(db):
 def build_summary(db):
     full = median_elapsed(db, f"""
         DROP TABLE IF EXISTS semester_gpa;
-        CREATE TABLE semester_gpa (PRIMARY KEY (sem_no, std_no)) {SUMMARY_SELECT} GROUP BY g.std_no, l.sem_no;""")
+        CREATE TABLE semester_gpa (PRIMARY KEY (sem_no, std_no)) {SUMMARY_SELECT}{SUMMARY_GROUP};""")
     # 성적 확정 때 그 학기만 다시 만드는 경우
     one = median_elapsed(db, f"""
         START TRANSACTION;
         DELETE FROM semester_gpa WHERE sem_no = {SEMESTER};
-        INSERT INTO semester_gpa {SUMMARY_SELECT} AND l.sem_no = {SEMESTER} GROUP BY g.std_no, l.sem_no;
+        INSERT INTO semester_gpa {SUMMARY_SELECT} AND l.sem_no = {SEMESTER}{SUMMARY_GROUP};
         COMMIT;""")
     db.run("ANALYZE TABLE semester_gpa;")
     return full, one
 
 
 def max_credit(db):
-    """V3. 결과가 같은지 먼저 확인하고, 둘 다 한 트랜잭션으로 잰다."""
+    """V3. 앱처럼 그 학기 값을 지우고 재학생 전원을 넣는다(insertRegular). 두 방식 결과가 같은지 먼저 확인하고, 둘 다 한 트랜잭션으로 잰다."""
+    decide = "CASE WHEN p.crd > 0 AND p.pts >= 4.0 * p.crd THEN 21 ELSE 18 END"
     single = f"""
         START TRANSACTION;
         DELETE FROM exp_max_credit;
-        INSERT INTO exp_max_credit
-        SELECT g.std_no, IF(SUM(c.crdt * {GP}) >= 4.0 * SUM(c.crdt), 21, 18){GRADED} AND l.sem_no = {SEMESTER}
-         GROUP BY g.std_no;
+        INSERT INTO exp_max_credit (std_no, max_crdt)
+        SELECT st.std_no, {decide}
+          FROM student st
+          LEFT JOIN ({Q2}) p ON p.std_no = st.std_no
+         WHERE st.std_stat = 'ATTENDING';
         COMMIT;"""
-    students = [r[0] for r in db.rows(f"SELECT DISTINCT g.std_no{GRADED} AND l.sem_no = {SEMESTER}")]
+    students = [r[0] for r in db.rows("SELECT std_no FROM student WHERE std_stat = 'ATTENDING' ORDER BY std_no")]
     per_student = "".join(f"""
-        SELECT IF(SUM(c.crdt * {GP}) >= 4.0 * SUM(c.crdt), 21, 18) INTO @m{GRADED}
-           AND l.sem_no = {SEMESTER} AND g.std_no = '{no}';
+        SELECT {decide} INTO @m
+          FROM student st
+          LEFT JOIN ({last_regular_gpa(no)}) p ON p.std_no = st.std_no
+         WHERE st.std_no = '{no}';
         INSERT INTO exp_max_credit VALUES ('{no}', @m);""" for no in students)
     loop = f"START TRANSACTION; DELETE FROM exp_max_credit; {per_student} COMMIT;"
 
@@ -218,8 +289,9 @@ def max_credit(db):
     b = db.run(checksum)
     if a != b:
         sys.exit(f"V3 두 방식의 결과가 다릅니다: {a.strip()} / {b.strip()}")
-    result = dict(students=len(students), single_ms=median_elapsed(db, single), loop_ms=median_elapsed(db, loop),
-                  statements_loop=2 * len(students))
+    max_21 = int(db.rows("SELECT COUNT(*) FROM exp_max_credit WHERE max_crdt = 21")[0][0])
+    result = dict(students=len(students), max_21=max_21, single_ms=median_elapsed(db, single),
+                  loop_ms=median_elapsed(db, loop), statements_loop=2 * len(students))
     db.run("DROP TABLE exp_max_credit;")
     return result
 
@@ -248,17 +320,21 @@ def main():
     (out / "explain").mkdir(parents=True, exist_ok=True)
     (out / "env.txt").write_text(environment(db, args.scale), encoding="utf-8")
 
-    results, extras = [], []
+    results, extras, expected = [], [], {}
     for variant, queries in QUERIES.items():
         set_variant(db, variant)
         if variant in GRADE_INDEXES:
-            extras.append((variant, "write_all_grades_ms", write_cost(db, variant)))
+            extras.append((variant, "write_all_grades_ms", write_cost(db)))
             for name, mb in index_sizes(db).items():
                 extras.append((variant, f"index_mb.{name}", mb))
         if variant == "V2":
             full, one = build_summary(db)
             extras += [("V2", "summary_build_all_ms", full), ("V2", "summary_refresh_one_semester_ms", one)]
         for query_id, sql in queries.items():
+            # 비교군마다 결과가 처음 잰 비교군과 같아야 시간 비교가 의미 있다
+            answer = canonical(db, sql)
+            if expected.setdefault(query_id, answer) != answer:
+                sys.exit(f"{variant} {query_id}: 결과가 다른 비교군과 다릅니다.")
             r = measure(db, variant, query_id, sql, args.runs)
             results.append(dict(scale=args.scale, variant=variant, query=query_id, **r))
             (out / "explain" / f"{variant}_{query_id}.txt").write_text(
@@ -269,7 +345,7 @@ def main():
     set_variant(db, "V1")
     v3 = max_credit(db)
     extras += [("V3", k, v) for k, v in v3.items()]
-    print(f"V3   학생 {v3['students']}명  한 문장 {v3['single_ms']} ms  반복 {v3['loop_ms']} ms")
+    print(f"V3   학생 {v3['students']}명(21학점 {v3['max_21']}명)  한 문장 {v3['single_ms']} ms  반복 {v3['loop_ms']} ms")
     db.run("DROP TABLE IF EXISTS semester_gpa;")  # 끝나면 현재 스키마(V1)로 되돌린다
 
     with open(out / "results.csv", "w", newline="", encoding="utf-8") as f:
