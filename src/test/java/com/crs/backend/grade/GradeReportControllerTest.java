@@ -106,10 +106,16 @@ class GradeReportControllerTest extends IntegrationTest {
     }
 
     @Test
-    void 학기는_시간_순서다() throws Exception {
-        String body = grades(Student.GRADUATING).andReturn().getResponse().getContentAsString();
-        List<Integer> years = JsonPath.read(body, "$.semesters[*].yr");
-        assertThat(years).isSorted();
+    void 학기는_같은_해_안에서도_1학기_여름_2학기_겨울_순서다() throws Exception {
+        // 시연 학생은 2026-1, 2026 여름, 2026-2, 2026 겨울을 들었다. 2026-2 는 s1, 겨울은 s2 까지 적용해야 확정된다
+        demoService.applyScenario(SeedTime.S1);
+        demoService.applyScenario(SeedTime.S2);
+
+        String body = grades(Student.DEMO).andReturn().getResponse().getContentAsString();
+        List<Integer> semNos = JsonPath.read(body, "$.semesters[*].semNo");
+        List<String> semTypes = JsonPath.read(body, "$.semesters[*].semType");
+        assertThat(semNos).containsExactly(7, 8, Semester.Y2026_SECOND, Semester.Y2026_WINTER);
+        assertThat(semTypes).containsExactly("FIRST", "SUMMER", "SECOND", "WINTER");
     }
 
     @Test
