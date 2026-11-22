@@ -62,7 +62,7 @@ SELECT COUNT(*) FROM (
 SELECT COUNT(*) FROM grade g JOIN enrollment e USING (std_no, lec_no)
 WHERE e.retake_yn = 'Y' AND g.ltr_grd IN ('A+', 'A0');
 
--- CHECK 재수강 조건(이전 확정 성적 C+ 이하, P/F는 F) 위반 또는 재수강 표시 누락 | 0
+-- CHECK 재수강 조건(이전 확정 성적 C+ 이하, P/F는 F) 위반 또는 재수강 표시 누락. 채플은 학기마다 신청하므로 제외 | 0
 WITH ord AS (SELECT sem_no, yr * 10 + FIELD(sem_type, 'FIRST', 'SUMMER', 'SECOND', 'WINTER') AS o FROM semester),
 att AS (
   SELECT e.std_no, l.crs_cd, ord.o, g.ltr_grd
@@ -72,7 +72,8 @@ cur AS (
   SELECT e.std_no, l.crs_cd, ord.o, e.retake_yn,
          (SELECT a.ltr_grd FROM att a WHERE a.std_no = e.std_no AND a.crs_cd = l.crs_cd AND a.o < ord.o
            ORDER BY a.o DESC LIMIT 1) AS prev
-  FROM enrollment e JOIN lecture l USING (lec_no) JOIN ord USING (sem_no) WHERE e.enrl_stat = 'ENROLLED')
+  FROM enrollment e JOIN lecture l USING (lec_no) JOIN course c USING (crs_cd) JOIN ord USING (sem_no)
+  WHERE e.enrl_stat = 'ENROLLED' AND c.cmpl_type <> 'CHAPEL')
 SELECT COUNT(*) FROM cur
 WHERE (retake_yn = 'Y' AND (prev IS NULL OR FIELD(prev, 'A+', 'A0', 'A-', 'B+', 'B0', 'B-', 'C+') BETWEEN 1 AND 6 OR prev = 'P'))
    OR (retake_yn = 'N' AND prev IS NOT NULL);
@@ -143,24 +144,29 @@ LEFT JOIN (
   GROUP BY e.std_no) x ON x.std_no = st.std_no
 WHERE st.yr_lvl <> LEAST(4, FLOOR(COALESCE(x.n, 0) / 2) + 1);
 
--- CHECK 졸업 판정(정규 8학기 이상, 이수 130학점 이상) 불일치 | 0
+-- CHECK 졸업 판정(정규 8학기 이상, 채플 뺀 이수 130학점 이상, 채플 P 6학기 이상) 불일치 | 0
 WITH ord AS (SELECT sem_no, yr * 10 + FIELD(sem_type, 'FIRST', 'SUMMER', 'SECOND', 'WINTER') AS o FROM semester),
 att AS (
-  SELECT e.std_no, l.crs_cd, c.crdt, g.ltr_grd,
+  SELECT e.std_no, l.crs_cd, c.crdt, c.cmpl_type, g.ltr_grd,
          ROW_NUMBER() OVER (PARTITION BY e.std_no, l.crs_cd ORDER BY ord.o DESC) AS rn
   FROM grade g JOIN enrollment e USING (std_no, lec_no) JOIN lecture l USING (lec_no)
   JOIN course c USING (crs_cd) JOIN ord USING (sem_no)
   WHERE l.grd_stat = 'CONFIRMED' AND e.enrl_stat = 'ENROLLED'),
-crd AS (SELECT std_no, SUM(crdt) AS crdt FROM att WHERE rn = 1 AND ltr_grd <> 'F' GROUP BY std_no),
+crd AS (SELECT std_no, SUM(crdt) AS crdt FROM att WHERE rn = 1 AND ltr_grd <> 'F' AND cmpl_type <> 'CHAPEL' GROUP BY std_no),
+chp AS (
+  SELECT e.std_no, COUNT(DISTINCT l.sem_no) AS n
+  FROM grade g JOIN enrollment e USING (std_no, lec_no) JOIN lecture l USING (lec_no) JOIN course c USING (crs_cd)
+  WHERE l.grd_stat = 'CONFIRMED' AND e.enrl_stat = 'ENROLLED' AND c.cmpl_type = 'CHAPEL' AND g.ltr_grd = 'P'
+  GROUP BY e.std_no),
 sem AS (
   SELECT e.std_no, COUNT(DISTINCT l.sem_no) AS n
   FROM enrollment e JOIN lecture l USING (lec_no) JOIN semester s USING (sem_no)
   WHERE e.enrl_stat = 'ENROLLED' AND l.grd_stat = 'CONFIRMED' AND s.sem_type IN ('FIRST', 'SECOND')
   GROUP BY e.std_no)
 SELECT COUNT(*) FROM student st
-LEFT JOIN crd ON crd.std_no = st.std_no LEFT JOIN sem ON sem.std_no = st.std_no
+LEFT JOIN crd ON crd.std_no = st.std_no LEFT JOIN sem ON sem.std_no = st.std_no LEFT JOIN chp ON chp.std_no = st.std_no
 WHERE st.std_stat <> 'ON_LEAVE'
-  AND (st.std_stat = 'GRADUATED') <> (COALESCE(sem.n, 0) >= 8 AND COALESCE(crd.crdt, 0) >= 130);
+  AND (st.std_stat = 'GRADUATED') <> (COALESCE(sem.n, 0) >= 8 AND COALESCE(crd.crdt, 0) >= 130 AND COALESCE(chp.n, 0) >= 6);
 
 -- CHECK 졸업생의 신청 대상 학기 장바구니·신청·최대학점·조교 | 0
 SELECT
@@ -173,26 +179,29 @@ SELECT
 + (SELECT COUNT(*) FROM teaching_assistant_assignment t JOIN lecture l USING (lec_no) JOIN student s ON s.std_no = t.std_no
     WHERE s.std_stat = 'GRADUATED' AND l.sem_no = (SELECT sem_no FROM semester WHERE yr = 2027 AND sem_type = 'FIRST'));
 
--- CHECK 2027-1 최대학점 재계산과 다름(직전 다닌 정규학기 평점 4.0 이상이면 21) | T1:0, T2:0
+-- CHECK 2027-1 최대학점 재계산과 다름(마지막으로 다닌 정규학기 평점 4.0 이상이면 21, 2학년 1학기는 1학년 두 학기 평균) | T1:0, T2:0
 WITH ord AS (SELECT sem_no, sem_type, yr * 10 + FIELD(sem_type, 'FIRST', 'SUMMER', 'SECOND', 'WINTER') AS o FROM semester),
 tgt AS (SELECT sem_no, o FROM ord WHERE o = 20271),
-gpa AS (
-  SELECT e.std_no, l.sem_no, ord.o,
-         SUM(c.crdt * CASE g.ltr_grd WHEN 'A+' THEN 4.5 WHEN 'A0' THEN 4.3 WHEN 'A-' THEN 4.0 WHEN 'B+' THEN 3.5
+reg AS (
+  SELECT e.std_no, ord.o, c.eval_type, c.crdt,
+         CASE g.ltr_grd WHEN 'A+' THEN 4.5 WHEN 'A0' THEN 4.3 WHEN 'A-' THEN 4.0 WHEN 'B+' THEN 3.5
            WHEN 'B0' THEN 3.3 WHEN 'B-' THEN 3.0 WHEN 'C+' THEN 2.5 WHEN 'C0' THEN 2.3 WHEN 'C-' THEN 2.0
-           WHEN 'D+' THEN 1.5 WHEN 'D0' THEN 1.3 WHEN 'D-' THEN 1.0 ELSE 0 END)
-           / NULLIF(SUM(CASE WHEN c.eval_type = 'GRADE' THEN c.crdt END), 0) AS gpa
+           WHEN 'D+' THEN 1.5 WHEN 'D0' THEN 1.3 WHEN 'D-' THEN 1.0 ELSE 0 END AS pt
   FROM grade g JOIN enrollment e USING (std_no, lec_no) JOIN lecture l USING (lec_no)
   JOIN course c USING (crs_cd) JOIN ord USING (sem_no)
   WHERE l.grd_stat = 'CONFIRMED' AND e.enrl_stat = 'ENROLLED' AND ord.sem_type IN ('FIRST', 'SECOND')
-    AND (c.eval_type = 'GRADE' OR g.ltr_grd = 'P')
-  GROUP BY e.std_no, l.sem_no, ord.o),
+    AND g.ltr_grd IS NOT NULL AND ord.o < (SELECT o FROM tgt)),
+terms AS (SELECT std_no, MAX(o) AS last_o, COUNT(DISTINCT o) AS cnt FROM reg GROUP BY std_no),
 last AS (
-  SELECT std_no, gpa, ROW_NUMBER() OVER (PARTITION BY std_no ORDER BY o DESC) AS rn
-  FROM gpa WHERE o < (SELECT o FROM tgt)),
+  SELECT r.std_no,
+         SUM(CASE WHEN r.eval_type = 'GRADE' THEN r.crdt * r.pt END)
+           / NULLIF(SUM(CASE WHEN r.eval_type = 'GRADE' THEN r.crdt END), 0) AS gpa
+  FROM reg r JOIN terms t ON t.std_no = r.std_no
+  WHERE t.cnt = 2 OR r.o = t.last_o
+  GROUP BY r.std_no),
 expect AS (
   SELECT st.std_no, CASE WHEN l.gpa >= 4.0 THEN 21 ELSE 18 END AS mx
-  FROM student st LEFT JOIN last l ON l.std_no = st.std_no AND l.rn = 1
+  FROM student st LEFT JOIN last l ON l.std_no = st.std_no
   WHERE st.std_stat = 'ATTENDING')
 SELECT
   (SELECT COUNT(*) FROM expect x LEFT JOIN semester_maximum_credit m

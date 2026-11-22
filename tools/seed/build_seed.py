@@ -13,6 +13,8 @@
 - 진급·졸업 처리와 2027-1 최대학점 산정이 끝났다
 - 2027-1 수강신청은 4학년(02-09)·3학년(02-10) 날이 지났고, 2·1학년은 장바구니만 있다
 졸업 판정에 4년치 이력이 필요해서 2023-1부터 만든다.
+졸업 = 다닌 정규학기 8개 이상, 채플을 뺀 이수 학점 130 이상, 채플 P 학기 6개 이상.
+채플은 학기마다 다시 신청한다(재수강이 아니다, retake_yn N). 같은 학기에 두 번은 못 듣고, 계절학기에도 연다.
 """
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -34,6 +36,7 @@ SNAPSHOT = datetime(2026, 12, 21, 10, 0)   # T0: 2026-2 성적 입력 기간
 ADMIN = "9001"
 GRAD_CREDITS = 130          # 졸업 이수 학점
 GRAD_SEMESTERS = 8          # 졸업에 필요한 정규학기 수
+GRAD_CHAPELS = 6            # 졸업에 필요한 채플 P 학기 수(정규·계절 모두 셈)
 
 GRADE_TABLE = [("A+", 97, 4.5), ("A0", 94, 4.3), ("A-", 90, 4.0), ("B+", 87, 3.5), ("B0", 84, 3.3), ("B-", 80, 3.0),
                ("C+", 77, 2.5), ("C0", 74, 2.3), ("C-", 70, 2.0), ("D+", 67, 1.5), ("D0", 64, 1.3), ("D-", 60, 1.0),
@@ -219,7 +222,7 @@ def open_lecture(sem, cd, sect=1, cap=None, cls="OFFLINE", no_room=False, eng="N
     raise RuntimeError(f"시간·강의실 배정 실패: {sem} {cd}")
 
 
-SEASONAL_OFFER = {8: ["1030007", "1010006"], 10: ["1030008", "1030010", "1030006"]}
+SEASONAL_OFFER = {8: ["1030007", "1010006", CHAPEL], 10: ["1030008", "1030010", "1030006"]}
 for sem, y, t in SEMS:
     if t in ("FIRST", "SECOND"):
         for cd, c in COURSES.items():
@@ -283,11 +286,16 @@ FORCED = {
 ONLY_FORCED = {("20250003", 9)}
 PIN_SEM = {("20240001", 9): "ALL_A-", ("20240002", 9): "JUST_UNDER_4", ("20250002", 6): "ALL_A0",
            ("20260001", 9): "ALL_A-"}   # 20260001: 시연 강의(데이터리터러시)까지 A-면 평점 4.0 → 2027-1 최대학점 21
+# 2학년 1학기 최대학점은 1학년 두 학기 평균으로 정해서(ACA-01) 1학년 첫 학기도 고정한다.
+# 나중에 넣은 고정이라 다른 데이터가 바뀌지 않게 점수를 뽑은 뒤 덮어쓴다(난수 흐름 유지)
+LATE_PIN = {("20260001", 7): "A-", ("20250002", 5): "A0"}
 # 계절 수강: {학기: {과목: (인원, 후보 학번 순서)}}. 이미 들은 과목이면 다음 후보로 넘어간다
+# 채플은 이미 들었어도 다시 듣고(학기마다 신청), 다른 계절 강의와 함께 들을 수 있다(시간이 겹치지 않으면)
 SEASONAL_ENROLL = {8: {"1030007": (2, ["20260001", "20240003", "20260002", "20250001"]),
-                       "1010006": (1, ["20260003", "20260001"])},
+                       "1010006": (1, ["20260003", "20260001"]),
+                       CHAPEL: (3, ["20230003", "20230002", "20250002", "20260001"])},
                    10: {"1030008": (3, ["20230003", "20260001", "20250001", "20260003", "20240004"]),
-                        "1030010": (2, ["20230003", "20260002", "20240001", "20260004", "20250003", "20230002"]),
+                        "1030010": (2, ["20230003", "20260002", "20240001", "20260004", "20250003", "20230002", "20250002"]),
                         "1030006": (2, ["20230003", "20260004", "20240005", "20260002", "20230002", "20250001"])}}
 WINTER_STATE = {"1030008": "CONFIRMED", "1030010": "SUBMITTED", "1030006": "ENTERING"}
 
@@ -331,6 +339,16 @@ def attended_regular(std, before_sem):
                    and e["lec"].get("gstat") == "CONFIRMED"}, key=order_key)
 
 
+def grad_credits(std, before_sem):
+    """졸업 이수 학점: 과목마다 마지막 성적이 F가 아닌 학점의 합(채플 제외)."""
+    return sum(COURSES[cd]["crdt"] for cd, g in latest(std, before_sem).items() if g != "F" and cd != CHAPEL)
+
+
+def chapel_sems(std, before_sem):
+    """채플을 P로 이수한 학기 수(정규·계절 모두)."""
+    return len({sem for sem, cd, g in history(std, before_sem) if cd == CHAPEL and g == "P"})
+
+
 def sem_gpa(std, sem):
     rows = [(COURSES[e["lec"]["cd"]]["crdt"], PT[e["grade"]["ltr"]]) for e in ENR
             if e["std"] == std and e["lec"]["sem"] == sem and e["stat"] == "ENROLLED" and e["grade"]
@@ -340,11 +358,21 @@ def sem_gpa(std, sem):
     return sum(c * p for c, p in rows) / sum(c for c, _ in rows)
 
 
+def gpa_over(std, sems):
+    rows = [(COURSES[e["lec"]["cd"]]["crdt"], PT[e["grade"]["ltr"]]) for e in ENR
+            if e["std"] == std and e["lec"]["sem"] in sems and e["stat"] == "ENROLLED" and e["grade"]
+            and COURSES[e["lec"]["cd"]]["eval"] == "GRADE"]
+    if not rows:
+        return None
+    return sum(c * p for c, p in rows) / sum(c for c, _ in rows)
+
+
 def max_credit_regular(std, sem):
+    """마지막으로 다닌 정규학기 평점 4.0 이상이면 21. 2학년 1학기(다닌 정규학기 2개)는 1학년 두 학기 평균으로 본다."""
     att = attended_regular(std, sem)
     if not att:
         return 18
-    g = sem_gpa(std, att[-1])
+    g = gpa_over(std, att) if len(att) == 2 else sem_gpa(std, att[-1])
     return 21 if g is not None and g >= 4.0 else 18
 
 
@@ -368,7 +396,8 @@ def exists_at(std, sem):
 
 def candidates(std, sem, yr):
     s = ST[std]
-    taken = {cd for _, cd, _ in history(std, sem)} | {e["lec"]["cd"] for e in ENR if e["std"] == std and e["lec"]["sem"] == sem}
+    this_sem = {e["lec"]["cd"] for e in ENR if e["std"] == std and e["lec"]["sem"] == sem}
+    taken = {cd for _, cd, _ in history(std, sem)} | this_sem
     offered = {l["cd"]: l for l in LECTURES if l["sem"] == sem and l["sect"] == 1 and l["stat"] == "OPEN"}
     own = [cd for cd, c in COURSES.items() if c["dept"] == s["dept"]]
     other = [cd for cd, c in COURSES.items() if c["dept"] not in (s["dept"], 103)]
@@ -376,8 +405,7 @@ def candidates(std, sem, yr):
     gen_el = [cd for cd, c in COURSES.items() if c["cmpl"] in ("GEN_ELEC",) and cd != POPULAR]
     rng.shuffle(gen_el)
     order = []
-    if CHAPEL not in taken:
-        order.append(CHAPEL)
+    order.append(CHAPEL)   # 채플은 학기마다 다시 신청한다(재수강 아님)
     if sem == CUR:
         order.append(POPULAR)
     order += [cd for cd in own if COURSES[cd]["rcmd"] == yr]
@@ -389,7 +417,7 @@ def candidates(std, sem, yr):
     order += [cd for cd in other if COURSES[cd]["rcmd"] <= yr]
     out = []
     for cd in order:
-        if cd in taken or cd not in offered or cd in out:
+        if (cd in taken and cd != CHAPEL) or cd in this_sem or cd not in offered or cd in out:
             continue
         if any(not passed(std, p, g, sem) for p, g in PREQ.get(cd, [])):
             continue
@@ -481,14 +509,15 @@ for sem, y, t in sorted(SEMS, key=lambda x: order_key(x[0])):
         for std in ST:
             if exists_at(std, sem) and std not in GRADUATED:
                 MAXC[(std, sem)] = 6 if is_attending(std, sem) else 3
-        # 이미 들은 과목은 건너뛰고, 계절학기에는 한 학생이 한 강의만 듣는다
+        # 이미 들은 과목은 건너뛰고, 계절학기에는 한 학생이 채플 말고는 한 강의만 듣는다
         for cd, (k, cands) in SEASONAL_ENROLL[sem].items():
             lec = find_lec(sem, cd)
             picked = 0
             for i, std in enumerate(cands):
+                mine = [e["lec"] for e in ENR if e["std"] == std and e["lec"]["sem"] == sem]
                 taken = {c for _, c, _ in history(std, sem)} | {e["lec"]["cd"] for e in ENR if e["std"] == std}
-                busy = any(e["std"] == std and e["lec"]["sem"] == sem for e in ENR)
-                if picked == k or cd in taken or busy:
+                busy = any((l["cd"] == CHAPEL) == (cd == CHAPEL) or overlap(l["slot"], lec["slot"]) for l in mine)
+                if picked == k or (cd in taken and cd != CHAPEL) or busy:
                     continue
                 picked += 1
                 ENR.append(dict(std=std, lec=lec, stat="ENROLLED", retake="N", proc="STUDENT",
@@ -499,9 +528,8 @@ for sem, y, t in sorted(SEMS, key=lambda x: order_key(x[0])):
             for std in ST:
                 if ST[std]["entry"] <= 2026 and std not in STILL_ON_LEAVE:
                     att = attended_regular(std, sem)
-                    lat = latest(std, sem)
-                    cr = sum(COURSES[cd]["crdt"] for cd, g in lat.items() if g != "F")
-                    if len(att) >= GRAD_SEMESTERS and cr >= GRAD_CREDITS:
+                    if (len(att) >= GRAD_SEMESTERS and grad_credits(std, sem) >= GRAD_CREDITS
+                            and chapel_sems(std, sem) >= GRAD_CHAPELS):
                         GRADUATED.add(std)
         for std in ST:
             if not is_attending(std, sem) or std in GRADUATED:
@@ -538,6 +566,10 @@ for sem, y, t in sorted(SEMS, key=lambda x: order_key(x[0])):
                 mine = [x["lec"] for x in ENR if x["std"] == e["std"] and x["lec"]["sem"] == sem and x["stat"] == "ENROLLED"]
                 forced = forced or just_under_4(mine).get(lec["cd"])
             e["grade"] = score_grade(lec, ST[e["std"]]["ab"], forced, e["retake"])
+            late = LATE_PIN.get((e["std"], sem))
+            if late and forced is None and COURSES[lec["cd"]]["eval"] == "GRADE":
+                forced = late
+                e["grade"] = score_grade(lec, ST[e["std"]]["ab"], forced, e["retake"])
             e["protect"] = e.get("protect") or forced is not None
         relative_fix(lec, rows)
         lec["gstat"] = "CONFIRMED"
@@ -648,11 +680,14 @@ CART.append((PREREQ[0], PREREQ[1], t1_cart + timedelta(minutes=30)))
 
 # ---------------------------------------------------------------- 검증(생성기 안에서)
 assert "20230001" in GRADUATED and "20230002" not in GRADUATED, GRADUATED
+assert grad_credits("20230002", TARGET) < GRAD_CREDITS                  # 졸업 유예 사유는 학점 부족
+assert any(e["lec"]["sem"] == 8 and e["lec"]["cd"] == CHAPEL for e in ENR)  # 계절학기 채플
 assert sem_gpa("20240001", CUR) == 4.0
 g2 = sem_gpa("20240002", CUR)
 assert 3.95 <= g2 < 4.0, g2
 assert MAXC[("20240001", TARGET)] == 21 and MAXC[("20240002", TARGET)] == 18
-assert MAXC[("20250002", TARGET)] == 21     # 복학생: 휴학 직전 2025-2 평점 4.3
+assert MAXC[("20250002", TARGET)] == 21     # 복학생: 2학년 1학기라 1학년(2025) 평점 4.3
+assert gpa_over("20250002", [5, 6]) == 4.3
 assert MAXC[("20250003", TARGET)] == 18     # 직전 학기 P/F만
 assert ("20230001", TARGET) not in MAXC and ("20230003", TARGET) not in MAXC
 assert MAXC[("20230003", 10)] == 3 and MAXC[("20260001", 10)] == 6
@@ -890,6 +925,8 @@ ENG_MAJOR, ENG_GENERAL, REL_EXEMPT = tl("1010015"), tl("1030013"), tl("1020015")
 NO_WEIGHTS = [tl(c) for c in ("1010019", "1020019", "1030009")]
 TWO_SECTIONS = tl("1030007", 2)
 RETAKE_LEC = tl("1010014")
+SUMMER_CHAPEL = find_lec(8, CHAPEL)
+SUMMER_CHAPEL_STD = sorted(e["std"] for e in ENR if e["lec"] is SUMMER_CHAPEL)
 TA_LEC = find_lec(TARGET, "1020001")
 DEMO_ROWS = [e for e in ENR if e["lec"] is DEMO_LEC and e["stat"] == "ENROLLED"]
 A_LIMIT = math.floor(len(DEMO_ROWS) * 0.4)
@@ -929,13 +966,13 @@ java += jclass("Account", "학생이 아닌 계정.", [
     ("DEMO_PROFESSOR", DEMO_PROF, "성적 입력 시연 강의의 교수"),
     ("PROFESSOR_INACTIVE", "100006", "퇴직 교수(INACTIVE). 로그인 차단")])
 java += jclass("Student", "학번.", [
-    ("DEMO", RICH, "시연 학생. 2026-2 시연 강의 점수만 빈칸, 나머지 A-. A-를 넣으면 평점 4.0 → 2027-1 최대학점 21"),
+    ("DEMO", RICH, "시연 학생. 2026-1 전부 A-, 2026-2 시연 강의 점수만 빈칸, 나머지 A-. A-를 넣으면 1학년 평점 4.0 → 2027-1 최대학점 21"),
     ("GPA_EXACTLY_4", "20240001", "2026-2 평점 4.0 → 최대학점 21"),
     ("GPA_JUST_UNDER_4", "20240002", "2026-2 평점 4.0 미만 → 최대학점 18. 신청 취소 이력"),
     ("PASS_FAIL_ONLY", "20250003", "2026-2 P/F 과목만 → 평점 없음 → 최대학점 18"),
-    ("GRADUATING", "20230001", "s1 에서 졸업 처리(정규 8학기, 130학점 이상)"),
+    ("GRADUATING", "20230001", "s1 에서 졸업 처리(정규 8학기, 채플 뺀 130학점 이상, 채플 P 6학기 이상)"),
     ("ON_LEAVE", "20230003", "휴학생. 2027-1 최대학점 없음"),
-    ("RETURNING", "20250002", "T0 휴학 → s1 에서 복학. 휴학 직전 학기 평점 4.3 → 최대학점 21"),
+    ("RETURNING", "20250002", "T0 휴학 → s1 에서 복학. 2학년 1학기라 1학년(2025) 평점 4.3 → 최대학점 21"),
     ("FRESHMAN", "20270001", "2027 신입생. s1 에서 계정 생성"),
     ("RETAKE", "20240003", "재수강 이력(F → A- 상한). 2027-1 데이터베이스 재수강 신청"),
     ("PREREQ_NOT_MET", "20240004", "자료구조 D+ → 데이터베이스(최소 C0) 신청 불가(T2)"),
@@ -1018,8 +1055,13 @@ gd = ["# 시드 데이터 안내", "",
       row("성적 조회", "T1", "20240003", "이산수학 F → 재수강 A-(총점 98이어도 상한)"),
       row("성적 조회", "T1", "20230003", "휴학 중 2026 겨울 수강. 계절 성적은 정규학기 평점에서 빠지고 이수 내역에는 들어감"),
       row("학기 마감(진급·졸업·복학)", "T0 → s1", "20230001 / 20250002 / 2026 입학생", "졸업 / 복학 / 1→2학년"),
+      row("졸업 판정", "T0 → s1", "20230001 / 20230002",
+          " / ".join(f"정규 {len(attended_regular(s_, TARGET))}학기·채플 뺀 {grad_credits(s_, TARGET):g}학점·채플 P {chapel_sems(s_, TARGET)}학기"
+                     for s_ in ("20230001", "20230002")) + " → 졸업 / 학점 부족으로 재학 유지"),
+      row("채플(계절학기)", "T0", f"2026 여름 {lec_label(SUMMER_CHAPEL)}: {', '.join(SUMMER_CHAPEL_STD)}",
+          "계절학기에 받은 채플 P도 졸업 요건(채플 P 6학기)에 셈. 채플은 학기마다 신청하고 재수강이 아님"),
       row("최대학점 산정", "T0 → s1", f"{RICH} / 20240001 / 20240002", "21 / 21 / 18 (4.0 경계)"),
-      row("최대학점 산정", "T0 → s1", "20250002", "복학생: 휴학 직전 2025-2 평점 기준 21"),
+      row("최대학점 산정", "T0 → s1", "20250002", "복학생: 2학년 1학기라 1학년(2025) 두 학기 평점 4.3 기준 21"),
       row("최대학점 산정", "T0 → s1", "20250003", "직전 학기 평점 없음 → 18"),
       row("최대학점 산정", "T0 → s1", "20230001 / 20230003", "졸업생·휴학생은 2027-1 정규학기 최대학점 없음"),
       row("강의 검색(REG-01)", "T1", lec_label(FULL), "잔여 0"),
@@ -1056,7 +1098,7 @@ gd = ["# 시드 데이터 안내", "",
       row("성적 입력", "T0", "2026-2 나머지 강의", "제출 상태. 수정하면 입력중으로"),
       row("성적 확정(GRD-02)", "T0", lec_label(NOTENT), "미입력 강의로 보임"),
       row("성적 확정", "T0", "2026-2 제출 강의", "관리자 확정 → 이후 교수 수정 불가"),
-      row("과목(ACA-02)", "T0", "선수과목 6건", "최소취득등급 기본값 D-, 채플 0.5학점 P/F"),
+      row("과목(ACA-02)", "T0", "선수과목 6건", "최소취득등급 기본값 D-, 채플 0.5학점 P/F(학기마다 신청, 이수 학점에서 제외)"),
       row("담당 강의(LEC-01)", "T0", f"교수 {DEMO_PROF}", "2026-2·2027-1 담당 강의"),
       row("강의계획서·반영비율(LEC-03)", "T0", ", ".join(f"{l['no']}번" for l in NO_WEIGHTS), "2027-1 반영비율 미입력"),
       row("조교(LEC-04)", "T0", f"20240005 / {TA_LEC['no']}번", "조교 지정·삭제, 조교 로그인 권한"), "",
