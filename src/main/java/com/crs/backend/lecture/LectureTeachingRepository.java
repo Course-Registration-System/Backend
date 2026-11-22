@@ -91,13 +91,30 @@ public class LectureTeachingRepository {
                 LECTURE);
     }
 
-    /** 그 학기에 stdNo 가 조교로 배정된 강의. 폐강 포함, 과목코드·분반 순. 졸업생이면 빈 목록입니다(조교 권한 없음). */
+    /**
+     * 조교 권한이 있는 배정(teaching_assistant_assignment a, student s)의 조건. 담당 강의 목록과 권한 확인이 같은 기준을 쓰도록 한 곳에 둡니다.
+     *
+     * <ul>
+     *   <li>졸업생이 아니다. 졸업생은 로그인과 성적 조회만 할 수 있다(USR-02).
+     *   <li>그 강의의 수강생(신청상태 '신청')이 아니다. 수강생은 조교가 될 수 없다(LEC-04, 자기 성적 처리 금지). 조교 추가 때 막아도 배정 뒤
+     *       수강신청·관리자 추가로 수강생이 될 수 있어 여기서도 막는다. 수강을 취소하면 다시 권한이 생긴다.
+     * </ul>
+     */
+    private static final String ASSISTANT_HAS_AUTHORITY = """
+            s.std_stat <> 'GRADUATED'
+            AND NOT EXISTS (
+              SELECT 1 FROM enrollment own
+               WHERE own.lec_no = a.lec_no AND own.std_no = a.std_no AND own.enrl_stat = 'ENROLLED')
+            """;
+
+    /** 그 학기에 stdNo 가 조교로 배정된 강의 중 조교 권한이 있는 것. 폐강 포함, 과목코드·분반 순. */
     public List<TeachingLectureRow> findByAssistant(int semNo, String stdNo) {
         return jdbc.query(
                 LECTURE_SELECT
                         + " JOIN teaching_assistant_assignment a ON a.lec_no = l.lec_no"
-                        + " JOIN student s ON s.std_no = a.std_no AND s.std_stat <> 'GRADUATED'"
-                        + " WHERE l.sem_no = :semNo AND a.std_no = :stdNo ORDER BY l.crs_cd, l.sect_no",
+                        + " JOIN student s ON s.std_no = a.std_no"
+                        + " WHERE l.sem_no = :semNo AND a.std_no = :stdNo AND " + ASSISTANT_HAS_AUTHORITY
+                        + " ORDER BY l.crs_cd, l.sect_no",
                 new MapSqlParameterSource().addValue("semNo", semNo).addValue("stdNo", stdNo),
                 LECTURE);
     }
@@ -124,17 +141,14 @@ public class LectureTeachingRepository {
     }
 
     /**
-     * stdNo 가 lecNo 강의의 조교인지. 배정돼 있어도 졸업생이면 false 입니다. 졸업생은 로그인과 성적 조회만 할 수 있다(USR-02). student 는 계정
-     * 관리 모듈 소관이라 읽기만 합니다.
+     * stdNo 가 lecNo 강의의 조교 권한이 있는지. 배정돼 있어도 졸업생이거나 그 강의의 수강생이면 false 입니다({@link #ASSISTANT_HAS_AUTHORITY}).
+     * student·enrollment 는 다른 모듈 소관이라 읽기만 합니다.
      */
     public boolean isAssistantOf(int lecNo, String stdNo) {
         return Boolean.TRUE.equals(jdbc.queryForObject(
-                """
-                SELECT EXISTS (
-                  SELECT 1
-                    FROM teaching_assistant_assignment a
-                    JOIN student s ON s.std_no = a.std_no
-                   WHERE a.lec_no = :lecNo AND a.std_no = :stdNo AND s.std_stat <> 'GRADUATED')
-                """, new MapSqlParameterSource().addValue("lecNo", lecNo).addValue("stdNo", stdNo), Boolean.class));
+                "SELECT EXISTS (SELECT 1 FROM teaching_assistant_assignment a JOIN student s ON s.std_no = a.std_no"
+                        + " WHERE a.lec_no = :lecNo AND a.std_no = :stdNo AND " + ASSISTANT_HAS_AUTHORITY + ")",
+                new MapSqlParameterSource().addValue("lecNo", lecNo).addValue("stdNo", stdNo),
+                Boolean.class));
     }
 }

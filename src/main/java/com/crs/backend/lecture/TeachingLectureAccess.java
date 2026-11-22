@@ -6,7 +6,7 @@ import com.crs.backend.common.auth.CurrentUser;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-/** {@link LectureAccess} 구현. 교수는 담당교수 여부, 학생은 조교배정 여부(졸업생 제외)로 판단합니다. */
+/** {@link LectureAccess} 구현. 교수는 담당교수 여부, 학생은 조교배정 여부(졸업생, 그 강의 수강생 제외)로 판단합니다. */
 @Component
 public class TeachingLectureAccess implements LectureAccess {
 

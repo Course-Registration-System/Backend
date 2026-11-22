@@ -128,6 +128,23 @@ class LectureTeachingControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 배정된_강의의_수강생이_된_조교에게는_그_강의가_보이지_않는다() throws Exception {
+        // 수강신청은 수강신청 모듈 일이라 테스트에서만 직접 넣는다(롤백됨)
+        jdbc.update(
+                "INSERT INTO enrollment (std_no, lec_no, enrl_stat, enrl_dtm) VALUES (?, ?, 'ENROLLED', ?)",
+                Student.TEACHING_ASSISTANT,
+                TA_CURRENT_LECTURE,
+                "2026-12-21 10:00:00");
+
+        as(Student.TEACHING_ASSISTANT, Role.STUDENT, PATH)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lectures", hasSize(0)));
+        // 다른 학기(2027-1)의 배정 강의는 그대로 보인다
+        as(Student.TEACHING_ASSISTANT, Role.STUDENT, PATH + "?semNo=" + Semester.Y2027_FIRST)
+                .andExpect(jsonPath("$.lectures[0].lecNo").value(Lecture.TA_TARGET));
+    }
+
+    @Test
     void 조교가_아닌_학생은_빈_목록() throws Exception {
         as(Student.DEMO, Role.STUDENT, PATH)
                 .andExpect(status().isOk())
