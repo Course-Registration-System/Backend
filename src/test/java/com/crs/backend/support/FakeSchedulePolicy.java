@@ -1,6 +1,10 @@
 package com.crs.backend.support;
 
+import com.crs.backend.academic.AcademicScheduleRepository;
 import com.crs.backend.academic.SchedulePolicy;
+import com.crs.backend.academic.SemesterRepository;
+import com.crs.backend.common.BusinessException;
+import com.crs.backend.common.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.springframework.context.annotation.Primary;
@@ -20,7 +24,13 @@ public class FakeSchedulePolicy implements SchedulePolicy {
     private boolean enrollOpen;
     private int maxCredit;
 
-    public FakeSchedulePolicy() {
+    private final AcademicScheduleRepository academicScheduleRepository;
+    private final SemesterRepository semesterRepository;
+
+    public FakeSchedulePolicy(
+            AcademicScheduleRepository academicScheduleRepository, SemesterRepository semesterRepository) {
+        this.academicScheduleRepository = academicScheduleRepository;
+        this.semesterRepository = semesterRepository;
         reset();
     }
 
@@ -49,6 +59,20 @@ public class FakeSchedulePolicy implements SchedulePolicy {
     @Override
     public Optional<Integer> registrationSemester() {
         return Optional.ofNullable(registrationSemester);
+    }
+
+    /** 실제 구현과 같은 규칙. 신청 대상 학기만 at() 으로 정한 값을 쓰고, 학기 존재와 현재 학기는 DB 에서 읽습니다. */
+    @Override
+    public int semesterOrDefault(Integer semNo) {
+        if (semNo != null) {
+            if (semesterRepository.findById(semNo).isEmpty()) {
+                throw new BusinessException(ErrorCode.SEMESTER_NOT_FOUND);
+            }
+            return semNo;
+        }
+        return registrationSemester()
+                .or(academicScheduleRepository::findCurrentSemester)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SEMESTER_NOT_FOUND));
     }
 
     @Override

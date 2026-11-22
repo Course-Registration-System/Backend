@@ -47,7 +47,7 @@ public final class SeedFixtures {
 
         private Student() {}
 
-        /** 시연 학생. 2026-2 시연 강의 점수만 빈칸, 나머지 A-. A-를 넣으면 평점 4.0 → 2027-1 최대학점 21 */
+        /** 시연 학생. 2026-1 전부 A-, 2026-2 시연 강의 점수만 빈칸, 나머지 A-. A-를 넣으면 1학년 평점 4.0 → 2027-1 최대학점 21 */
         public static final String DEMO = "20260001";
 
         /** 2026-2 평점 4.0 → 최대학점 21 */
@@ -65,7 +65,7 @@ public final class SeedFixtures {
         /** 휴학생. 2027-1 최대학점 없음 */
         public static final String ON_LEAVE = "20230003";
 
-        /** T0 휴학 → s1 에서 복학. 휴학 직전 학기 평점 4.3 → 최대학점 21 */
+        /** T0 휴학 → s1 에서 복학. 2학년 1학기라 1학년(2025) 평점 4.3 → 최대학점 21 */
         public static final String RETURNING = "20250002";
 
         /** 2027 신입생. s1 에서 계정 생성 */
