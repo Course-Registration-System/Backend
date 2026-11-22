@@ -97,6 +97,11 @@ public class CartRepository {
         jdbc.update("INSERT INTO course_cart (std_no, lec_no, reg_dtm) VALUES (?, ?, ?)", stdNo, lecNo, now);
     }
 
+    /** 폐강: 그 강의를 모든 학생의 장바구니에서 뺍니다. */
+    public void deleteByLecture(int lecNo) {
+        jdbc.update("DELETE FROM course_cart WHERE lec_no = ?", lecNo);
+    }
+
     /** 지운 건수를 돌려줍니다. */
     public int delete(String stdNo, int lecNo) {
         return jdbc.update("DELETE FROM course_cart WHERE std_no = ? AND lec_no = ?", stdNo, lecNo);

@@ -1,5 +1,6 @@
 package com.crs.backend.enrollment;
 
+import com.crs.backend.enrollment.dto.EnrolledStudentResponse;
 import com.crs.backend.enrollment.dto.EnrollmentResponse;
 import com.crs.backend.lecture.LecStat;
 import com.crs.backend.lecture.dto.TimeSlotResponse;
@@ -12,7 +13,10 @@ import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-/** 수강신청·취소(REG-03)의 SQL. 강의·과목·학기·선수과목·학생은 읽기만 하고, 강의의 신청인원만 바꿉니다. */
+/**
+ * 수강신청·취소(REG-03)와 관리자 신청 현황(REG-05)의 SQL. 강의·과목·학기·선수과목·학생은 읽기만 하고, 강의는 신청인원과 관리자 추가 때의
+ * 정원만 바꿉니다.
+ */
 @Repository
 public class EnrollmentRepository {
 
@@ -53,6 +57,15 @@ public class EnrollmentRepository {
 
     /** 강의 행만 잠급니다(과목 행은 잠그지 않음). 여러 학생이 동시에 신청해도 정원을 넘지 않습니다. */
     public Optional<LectureInfo> lockLecture(int lecNo) {
+        return findLecture(lecNo, " FOR UPDATE OF l");
+    }
+
+    /** 잠그지 않고 읽습니다. 현황 조회용입니다. */
+    public Optional<LectureInfo> findLecture(int lecNo) {
+        return findLecture(lecNo, "");
+    }
+
+    private Optional<LectureInfo> findLecture(int lecNo, String lock) {
         return jdbc
                 .query(
                         """
@@ -60,8 +73,7 @@ public class EnrollmentRepository {
                           FROM lecture l
                           JOIN course c ON c.crs_cd = l.crs_cd
                          WHERE l.lec_no = ?
-                           FOR UPDATE OF l
-                        """,
+                        """ + lock,
                         (rs, rowNum) -> new LectureInfo(
                                 rs.getInt("sem_no"),
                                 rs.getString("crs_cd"),
@@ -194,32 +206,68 @@ public class EnrollmentRepository {
 
     // ---- 쓰기
 
-    public void insert(String stdNo, int lecNo, boolean retake, LocalDateTime now) {
+    public void insert(String stdNo, int lecNo, boolean retake, ProcType procType, LocalDateTime now) {
         jdbc.update("""
                 INSERT INTO enrollment (std_no, lec_no, enrl_stat, retake_yn, proc_type, enrl_dtm)
-                VALUES (?, ?, 'ENROLLED', ?, 'STUDENT', ?)
-                """, stdNo, lecNo, yn(retake), now);
+                VALUES (?, ?, 'ENROLLED', ?, ?, ?)
+                """, stdNo, lecNo, yn(retake), procType.name(), now);
     }
 
     /** 취소한 기록을 되살립니다. 신청일시는 다시 신청한 시각, 취소일시는 비우고, 처리구분은 이번 처리 주체로 바꿉니다. */
-    public void revive(String stdNo, int lecNo, boolean retake, LocalDateTime now) {
+    public void revive(String stdNo, int lecNo, boolean retake, ProcType procType, LocalDateTime now) {
         jdbc.update("""
                 UPDATE enrollment
-                   SET enrl_stat = 'ENROLLED', retake_yn = ?, proc_type = 'STUDENT', enrl_dtm = ?, cncl_dtm = NULL
+                   SET enrl_stat = 'ENROLLED', retake_yn = ?, proc_type = ?, enrl_dtm = ?, cncl_dtm = NULL
                  WHERE std_no = ? AND lec_no = ?
-                """, yn(retake), now, stdNo, lecNo);
+                """, yn(retake), procType.name(), now, stdNo, lecNo);
     }
 
     /** 신청 중인 건을 취소합니다. 취소한 건수를 돌려줍니다. */
-    public int cancel(String stdNo, int lecNo, LocalDateTime now) {
+    public int cancel(String stdNo, int lecNo, ProcType procType, LocalDateTime now) {
         return jdbc.update("""
-                UPDATE enrollment SET enrl_stat = 'CANCELLED', cncl_dtm = ?, proc_type = 'STUDENT'
+                UPDATE enrollment SET enrl_stat = 'CANCELLED', cncl_dtm = ?, proc_type = ?
                  WHERE std_no = ? AND lec_no = ? AND enrl_stat = 'ENROLLED'
-                """, now, stdNo, lecNo);
+                """, now, procType.name(), stdNo, lecNo);
+    }
+
+    /** 폐강: 강의의 신청 중인 건을 모두 관리자 처리로 취소합니다. */
+    public void cancelAll(int lecNo, LocalDateTime now) {
+        jdbc.update("""
+                UPDATE enrollment SET enrl_stat = 'CANCELLED', cncl_dtm = ?, proc_type = 'ADMIN'
+                 WHERE lec_no = ? AND enrl_stat = 'ENROLLED'
+                """, now, lecNo);
     }
 
     public void addEnrlCnt(int lecNo, int delta) {
         jdbc.update("UPDATE lecture SET enrl_cnt = enrl_cnt + ? WHERE lec_no = ?", delta, lecNo);
+    }
+
+    /** 관리자 추가로 정원이 신청인원보다 작아지지 않게, 정원을 지금 신청인원 + 1 로 늘립니다. */
+    public void raiseCapForOneMore(int lecNo) {
+        jdbc.update("UPDATE lecture SET cap = enrl_cnt + 1 WHERE lec_no = ?", lecNo);
+    }
+
+    // ---- 관리자 현황(REG-05)
+
+    /** 강의의 신청 학생('신청' 상태). */
+    public List<EnrolledStudentResponse> findStudents(int lecNo) {
+        return jdbc.query(
+                """
+                SELECT e.std_no, u.usr_nm, s.yr_lvl, e.retake_yn, e.proc_type, e.enrl_dtm
+                  FROM enrollment e
+                  JOIN student s ON s.std_no = e.std_no
+                  JOIN user_account u ON u.usr_no = e.std_no
+                 WHERE e.lec_no = ? AND e.enrl_stat = 'ENROLLED'
+                 ORDER BY e.enrl_dtm, e.std_no
+                """,
+                (rs, rowNum) -> new EnrolledStudentResponse(
+                        rs.getString("std_no"),
+                        rs.getString("usr_nm"),
+                        rs.getInt("yr_lvl"),
+                        "Y".equals(rs.getString("retake_yn")),
+                        ProcType.valueOf(rs.getString("proc_type")),
+                        rs.getObject("enrl_dtm", LocalDateTime.class)),
+                lecNo);
     }
 
     private boolean exists(String sql, Object... args) {
