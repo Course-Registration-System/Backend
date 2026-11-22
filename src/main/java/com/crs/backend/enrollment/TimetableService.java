@@ -19,13 +19,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class TimetableService {
 
-    private final TimetableRepository repository;
     private final EnrollmentRepository enrollmentRepository;
     private final SchedulePolicy schedulePolicy;
 
-    public TimetableService(
-            TimetableRepository repository, EnrollmentRepository enrollmentRepository, SchedulePolicy schedulePolicy) {
-        this.repository = repository;
+    public TimetableService(EnrollmentRepository enrollmentRepository, SchedulePolicy schedulePolicy) {
         this.enrollmentRepository = enrollmentRepository;
         this.schedulePolicy = schedulePolicy;
     }
@@ -36,7 +33,7 @@ public class TimetableService {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
         String stdNo = user.usrNo();
-        int sem = semNo == null ? targetSemester() : checkedSemester(semNo);
+        int sem = schedulePolicy.semesterOrDefault(semNo);
 
         List<EnrollmentResponse> lectures = enrollmentRepository.findEnrolled(stdNo, sem);
         BigDecimal total = sum(lectures, false);
@@ -50,20 +47,5 @@ public class TimetableService {
                 .filter(lecture -> !(withoutChapel && "CHAPEL".equals(lecture.cmplType())))
                 .map(EnrollmentResponse::crdt)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    // 학기를 비우면 신청 대상 학기(D24), 그것도 없으면(정정까지 끝남) 현재 학기
-    private int targetSemester() {
-        return schedulePolicy
-                .registrationSemester()
-                .or(repository::findCurrentSemester)
-                .orElseThrow(() -> new BusinessException(ErrorCode.SEMESTER_NOT_FOUND));
-    }
-
-    private int checkedSemester(int semNo) {
-        if (!repository.semesterExists(semNo)) {
-            throw new BusinessException(ErrorCode.SEMESTER_NOT_FOUND);
-        }
-        return semNo;
     }
 }
