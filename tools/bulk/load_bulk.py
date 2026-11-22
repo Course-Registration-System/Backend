@@ -7,7 +7,7 @@
 1. DB 를 지우고 다시 만든 뒤 V1__init_schema.sql 로 테이블을 만든다(개발 DB crs 는 건드리지 않는다)
 2. CSV 를 컨테이너의 /var/lib/mysql-files/bulk 로 복사한다(MySQL 이미지의 secure_file_priv 위치)
 3. FK 검사를 끄고 LOAD DATA 로 넣은 뒤 다시 켜고, 통계를 갱신한다(ANALYZE TABLE)
-4. verify.sql 의 위반 건수를 출력한다. 하나라도 0 이 아니면 종료 코드 1
+4. verify.sql(FK 고아 행)과 seed-checks.sql(업무 규칙, 시드와 같은 검사)의 위반 건수를 출력한다. 하나라도 0 이 아니면 종료 코드 1
 """
 import argparse
 import os
@@ -22,6 +22,13 @@ from gen_bulk import TABLES  # noqa: E402
 REPO = Path(__file__).resolve().parents[2]
 SCHEMA = REPO / "src/main/resources/db/migration/V1__init_schema.sql"
 VERIFY = Path(__file__).resolve().parent / "verify.sql"
+SEED_CHECKS = REPO / "src/test/resources/seed/seed-checks.sql"
+# 시드 사례 전용 검사. 이름이 바뀌면(예: #20 이 채플 예외를 넣으면) 다시 돈다
+SEED_ONLY = {
+    "2026-2 평점: 20240001은 정확히 4.0, 20240002는 4.0 미만",
+    # #20 전 버전은 학기마다 듣는 채플을 재수강 표시 누락으로 센다. 대량 데이터는 채플을 학기마다 넣는다(D28)
+    "재수강 조건(이전 확정 성적 C+ 이하, P/F는 F) 위반 또는 재수강 표시 누락",
+}
 REMOTE_DIR = "/var/lib/mysql-files/bulk"
 
 
@@ -87,17 +94,34 @@ def main():
         t, n = line.split("\t")
         print(f"  {t:<20} {int(n):>10,}")
 
-    started = time.time()
-    result = mysql(args.container, pw, VERIFY.read_text(encoding="utf-8"), db)
-    print(f"검사 ({time.time() - started:.0f}초)")
     failed = 0
-    for line in result.strip().splitlines():
+    started = time.time()
+    print("FK 고아 행 (verify.sql)")
+    for line in mysql(args.container, pw, VERIFY.read_text(encoding="utf-8"), db).strip().splitlines():
         chk, n = line.rsplit("\t", 1)
-        failed += int(n) != 0
-        print(f"  {'OK ' if int(n) == 0 else 'NG '} {chk}: {n}")
+        failed += report(chk, int(n))
+    print("업무 규칙 (seed-checks.sql)")
+    for name, sql in seed_checks():
+        t = time.time()
+        n = int(mysql(args.container, pw, "SET @now = NOW();\n" + sql, db).strip())
+        failed += report(f"{name} ({time.time() - t:.0f}초)", n)
+    print(f"검사 {time.time() - started:.0f}초")
     subprocess.run(["docker", "exec", args.container, "rm", "-rf", REMOTE_DIR], check=True)
     sys.exit(1 if failed else 0)
 
+
+def seed_checks():
+    """seed-checks.sql 에서 모든 시점의 기대값이 0 인 검사만 고른다. 시점별 검사와 시드 전용 검사는 건너뛴다."""
+    for block in SEED_CHECKS.read_text(encoding="utf-8").split("\n-- CHECK ")[1:]:
+        header, sql = block.split("\n", 1)
+        name, expected = (part.strip() for part in header.rsplit("|", 1))
+        if expected == "0" and name not in SEED_ONLY:
+            yield name, sql.strip()
+
+
+def report(name, n):
+    print(f"  {'OK' if n == 0 else 'NG'}  {name}: {n}")
+    return n != 0
 
 if __name__ == "__main__":
     main()

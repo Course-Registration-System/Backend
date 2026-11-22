@@ -6,8 +6,8 @@
 
 규모        학생     학기   정규학기당 강의   수강신청 행     생성 / 적재 / 검사(로컬 기준)
 XS          300      8      60               약 7천          생성기 점검용
-S           1만      8      1,500            약 26만         4초 / 8초 / 20초
-M           5만      8      3,000            약 106만        18초 / 37초 / 6분
+S           1만      8      1,500            약 26만         4초 / 9초 / 28초
+M           5만      8      3,000            약 106만        18초 / 37초 / 약 6분
 L           20만     8      6,000            약 420만(추정)
 입학 연도가 2024·2025·2026 으로 나뉘어 학생마다 다닌 학기 수가 달라서, 학기당 6과목을 모두 곱한 값보다 적다.
 
@@ -24,7 +24,8 @@ L           20만     8      6,000            약 420만(추정)
 - 한 학생의 같은 학기 강의는 시간이 겹치지 않는다(강의마다 시간 칸 하나, 학생은 칸마다 하나만)
 - 같은 학기에 같은 과목 두 분반 금지, 최대학점 이내(직전 정규학기 평점 4.0 이상 21, 아니면 18, 계절 6. 채플 제외)
 - 재수강 성적은 A- 까지, P/F 과목은 점수 없음, 취소한 신청에는 성적 없음
-- 같은 강의실·같은 시간 칸에 대면 강의 하나
+- 같은 강의실·같은 시간 칸에 대면 강의 하나, 교수 한 명도 같은 시간 칸에 강의 하나
+- 학기별 최대학점(semester_maximum_credit)은 다닌 학기마다 넣는다
 
 학번은 연도 4자리 + 일련 6자리(10자리)다. 시드(8자리)와 겹치지 않게 하려는 실험 전용 형식이다.
 """
@@ -87,6 +88,7 @@ TABLES = {
     "professor": ["prof_no", "dept_no", "office"],
     "semester": ["sem_no", "yr", "sem_type", "cur_sem_yn"],
     "academic_schedule": ["schd_no", "sem_no", "schd_type", "tgt_yr_lvl", "start_dtm", "end_dtm"],
+    "semester_maximum_credit": ["std_no", "sem_no", "max_crdt"],
     "classroom": ["room_cd", "room_nm"],
     "course": ["crs_cd", "dept_no", "crs_nm", "crdt", "cmpl_type", "eval_type", "rcmd_yr_lvl"],
     "lecture": ["lec_no", "crs_cd", "sem_no", "prof_no", "sect_no", "cap", "enrl_cnt", "lec_stat", "eng_lec_yn",
@@ -182,10 +184,12 @@ def main():
     # 교수: 교수 한 명이 학기당 강의 약 4개
     n_prof = max(10, n_lec // 4)
     profs_by_dept = {d: [] for d in depts}
+    all_profs = []
     for i in range(n_prof):
         pno = str(100001 + i)
         d = depts[i % len(depts)]
         profs_by_dept[d].append(pno)
+        all_profs.append(pno)
         nm = rng.choice(SURNAMES) + rng.choice(GIVEN)
         w.row("user_account", pno, PWD_HASH, nm, f"p{pno}@crs.ac.kr", "PROFESSOR", "ACTIVE")
         w.row("professor", pno, d, f"연구실 {i + 1}")
@@ -243,6 +247,14 @@ def main():
         lectures = []
         sect = {}
         room_next = [0] * len(BLOCKS)
+        busy = set()  # (교수, 시간 칸). 교수 한 명이 같은 시간에 두 강의를 맡지 않는다
+
+        def free_prof(dept, block):
+            cands = [p for p in profs_by_dept[dept] if (p, block) not in busy]
+            prof = rng.choice(cands or [p for p in all_profs if (p, block) not in busy])
+            busy.add((prof, block))
+            return prof
+
         for k in range(n_sem_lec):
             crs = rng.choice(pool)
             sect[crs["cd"]] = sect.get(crs["cd"], 0) + 1
@@ -255,9 +267,8 @@ def main():
             if not online:
                 room = rooms[room_next[block]]
                 room_next[block] += 1
-            profs = profs_by_dept[crs["dept"]] or profs_by_dept[depts[0]]
             lec = dict(no=lec_no, crs=crs, sem=sem_no, block=block, cap=rng.choice([30, 40, 50, 60, 80, 120]),
-                       prof=rng.choice(profs), sect=sect[crs["cd"]], online=online, room=room,
+                       prof=free_prof(crs["dept"], block), sect=sect[crs["cd"]], online=online, room=room,
                        exempt=rng.random() < 0.05, students=[])
             lectures.append(lec)
         # 채플: 정규학기마다, 온라인(강의실 없음), 정원 999 분반을 필요한 만큼
@@ -266,7 +277,7 @@ def main():
             for s in range(1, math.ceil(n_students / 900) + 2):
                 lec_no += 1
                 chapels.append(dict(no=lec_no, crs=courses[chapel_cd], sem=sem_no, block=None, cap=999,
-                                    prof=rng.choice(profs_by_dept[GEN_DEPT]), sect=s, online=True, room=None,
+                                    prof=free_prof(GEN_DEPT, "CHAPEL"), sect=s, online=True, room=None,
                                     exempt=True, students=[]))
 
         by_dept = {}
@@ -286,6 +297,7 @@ def main():
             if not regular and rng.random() > 0.10:  # 계절학기는 약 10% 만
                 continue
             max_crdt = (21 if (st["last_gpa"] or 0) >= 4.0 else 18) if regular else 6
+            w.row("semester_maximum_credit", st["no"], sem_no, max_crdt)
             target = rng.randint(5, 7) if regular else rng.randint(1, 2)
             used_blocks, taken_crs, credits, chosen = set(), set(), 0.0, []
 
