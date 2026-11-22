@@ -5,10 +5,10 @@
 적재: python -X utf8 tools/bulk/load_bulk.py --dir build/bulk/S   (별도 DB crs_bulk 에 넣고 seed-checks.sql 로 검사)
 
 규모        학생     학기   정규학기당 강의   수강신청 행     생성 / 적재 / 검사(로컬 기준)
-XS          300      8      60               약 7천          생성기 점검용
-S           1만      8      1,500            약 26만         4초 / 9초 / 28초
-M           5만      8      3,000            약 106만        18초 / 37초 / 약 6분
-L           20만     8      6,000            약 420만(추정)
+XS          300      8      60               약 6천          생성기 점검용
+S           3천      8      450              약 7.6만
+M           1만      8      1,500            약 26만         5초 / 13초 / 55초
+L           29,997   8      4,500            약 77만         13초 / 25초 / 190초
 입학 연도가 2024·2025·2026 으로 나뉘어 학생마다 다닌 학기 수가 달라서, 학기당 6과목을 모두 곱한 값보다 적다.
 
 학기 8개는 정규 6(2024-1 ~ 2026-2) + 계절 2(2024 여름, 2025 겨울)이고, 모두 성적이 확정된 과거 학기다.
@@ -30,7 +30,7 @@ L           20만     8      6,000            약 420만(추정)
 - 같은 강의실·같은 시간 칸에 대면 강의 하나, 교수 한 명도 같은 시간 칸에 강의 하나
 - 학기별 최대학점(semester_maximum_credit)은 다닌 학기마다 넣는다
 
-학번은 연도 4자리 + 일련 6자리(10자리)다. 시드(8자리)와 겹치지 않게 하려는 실험 전용 형식이다.
+학번은 시드와 같은 8자리(입학 연도 4 + 일련 4, D30)다. 입학 연도당 9,999명까지라 학생은 최대 29,997명이다.
 """
 import argparse
 import math
@@ -42,12 +42,14 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 
+# 학번 8자리(D30)라 입학 연도당 9,999명, 세 해 합쳐 29,997명이 상한이다. 강의 하나에 학생 약 6.7명 비율을 지킨다
 SCALES = {
     "XS": dict(students=300, lectures=60),
-    "S": dict(students=10_000, lectures=1_500),
-    "M": dict(students=50_000, lectures=3_000),
-    "L": dict(students=200_000, lectures=6_000),
+    "S": dict(students=3_000, lectures=450),
+    "M": dict(students=10_000, lectures=1_500),
+    "L": dict(students=29_997, lectures=4_500),
 }
+MAX_PER_COHORT = 9_999
 
 # test1234! (BCrypt). 시드와 같은 값
 PWD_HASH = "$2a$10$mVtkuC8t.ybJShFMmg7dAePnho.f1IpD92TXrTXipF.OhtbWdF/.S"
@@ -165,6 +167,7 @@ def main():
     w = Writer(out)
 
     n_students, n_lec = cfg["students"], cfg["lectures"]
+    assert math.ceil(n_students / len(COHORTS)) <= MAX_PER_COHORT, "학번 8자리로 만들 수 있는 학생 수를 넘었다"
 
     # ---------------------------------------------------------------- 기준 데이터
     depts = list(range(101, 101 + len(DEPT_NAMES)))
@@ -229,7 +232,7 @@ def main():
     students = []
     for i in range(n_students):
         cohort = COHORTS[i % len(COHORTS)]
-        sno = f"{cohort}{i // len(COHORTS) + 1:06d}"
+        sno = f"{cohort}{i // len(COHORTS) + 1:04d}"
         st = dict(no=sno, dept=rng.choice(major_depts), cohort=cohort, ability=rng.gauss(0, 1),
                   on_leave=rng.random() < 0.10, history={}, terms=[], retaken=set(), regular_cnt=0)
         # 휴학생은 다닐 수 있는 정규학기 중 마지막 하나 이상을 쉰다(현재 휴학 중)
