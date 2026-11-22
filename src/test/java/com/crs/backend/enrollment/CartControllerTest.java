@@ -6,16 +6,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.crs.backend.common.SettableClock;
 import com.crs.backend.common.auth.JwtProvider;
 import com.crs.backend.common.auth.Role;
 import com.crs.backend.support.Bearer;
-import com.crs.backend.support.FakeSchedulePolicy;
 import com.crs.backend.support.IntegrationTest;
 import com.crs.backend.support.SeedFixtures.Account;
 import com.crs.backend.support.SeedFixtures.Lecture;
 import com.crs.backend.support.SeedFixtures.Semester;
 import com.crs.backend.support.SeedFixtures.Student;
 import com.crs.backend.support.SeedLectures;
+import com.crs.backend.support.TestClock;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,7 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 기간 판정은 FakeSchedulePolicy 로 정합니다. 기본은 2027-1 장바구니 기간입니다. */
+/** 실제 학사일정으로 판정합니다. 기본 시각은 2027-1 장바구니 기간입니다. */
 @AutoConfigureMockMvc
 @Transactional
 class CartControllerTest extends IntegrationTest {
@@ -43,7 +44,7 @@ class CartControllerTest extends IntegrationTest {
     JdbcTemplate jdbc;
 
     @Autowired
-    FakeSchedulePolicy schedulePolicy;
+    SettableClock clock;
 
     // 2027-1 채플. 0.5학점이지만 담은 학점에 넣지 않는다
     int chapel;
@@ -53,14 +54,14 @@ class CartControllerTest extends IntegrationTest {
 
     @BeforeEach
     void setUp() {
-        schedulePolicy.at(Semester.Y2027_FIRST, true);
+        TestClock.at(clock, TestClock.CART);
         chapel = SeedLectures.of(jdbc, "1030001", Semester.Y2027_FIRST, 1);
         winter = SeedLectures.of(jdbc, "1030006", Semester.Y2026_WINTER, 1);
     }
 
     @AfterEach
     void tearDown() {
-        schedulePolicy.reset();
+        TestClock.reset(clock);
     }
 
     @Test
@@ -72,6 +73,7 @@ class CartControllerTest extends IntegrationTest {
 
         add(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT).andExpect(status().isCreated());
         add(Student.GPA_JUST_UNDER_4, Lecture.ONE_SEAT_LEFT).andExpect(status().isCreated());
+        // 2027-1 최대학점 산정 전이라 정규학기 기본값 18
         add(Student.GPA_EXACTLY_4, chapel)
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.semNo").value(Semester.Y2027_FIRST))
@@ -90,7 +92,7 @@ class CartControllerTest extends IntegrationTest {
 
     @Test
     void 장바구니_기간이_아니면_담거나_뺄_수_없다() throws Exception {
-        schedulePolicy.at(Semester.Y2027_FIRST, false);
+        TestClock.at(clock, TestClock.ENROLL_3RD_YEAR);
         add(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("CART_CLOSED"));
@@ -103,7 +105,8 @@ class CartControllerTest extends IntegrationTest {
 
     @Test
     void 신청_대상_학기가_없으면_목록도_볼_수_없다() throws Exception {
-        schedulePolicy.at(null, false);
+        // 2027-1 정정이 끝난 뒤. 시드에 다음 학기가 없다
+        TestClock.at(clock, "2027-04-01T12:00:00");
         mvc.perform(get("/api/cart").header(HttpHeaders.AUTHORIZATION, student(Student.GPA_EXACTLY_4)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("NO_REGISTRATION_SEMESTER"));
@@ -137,7 +140,8 @@ class CartControllerTest extends IntegrationTest {
 
     @Test
     void 계절학기에는_휴학생도_담을_수_있다() throws Exception {
-        schedulePolicy.at(Semester.Y2026_WINTER, true);
+        // 2026 겨울학기 장바구니 기간(11/23~25)
+        TestClock.at(clock, "2026-11-24T12:00:00");
         add(Student.ON_LEAVE, winter).andExpect(status().isCreated());
     }
 
