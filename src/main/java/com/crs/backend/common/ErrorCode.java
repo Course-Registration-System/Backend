@@ -19,6 +19,13 @@ public enum ErrorCode {
     LECTURE_NOT_FOUND(HttpStatus.NOT_FOUND, "강의를 찾을 수 없습니다."),
     COURSE_NOT_FOUND(HttpStatus.NOT_FOUND, "과목을 찾을 수 없습니다."),
     SEMESTER_NOT_FOUND(HttpStatus.NOT_FOUND, "학기를 찾을 수 없습니다."),
+    // 학기·학사일정 (ACA-01)
+    DUPLICATE_SEMESTER(HttpStatus.CONFLICT, "이미 등록된 학기입니다."),
+    SEMESTER_IN_USE(HttpStatus.CONFLICT, "일정이 시작된 학기는 연도·학기구분을 바꿀 수 없습니다."),
+    SCHEDULE_NOT_FOUND(HttpStatus.NOT_FOUND, "학사일정을 찾을 수 없습니다."),
+    SCHEDULE_OVERLAP(HttpStatus.CONFLICT, "같은 일정유형·대상학년의 기간과 겹칩니다."),
+    SCHEDULE_ORDER(HttpStatus.CONFLICT, "일정은 장바구니 → 수강신청 → 정정 → 성적입력 순서여야 합니다."),
+    SCHEDULE_STARTED(HttpStatus.CONFLICT, "이미 시작된 일정은 삭제할 수 없습니다."),
     PROFESSOR_NOT_FOUND(HttpStatus.NOT_FOUND, "담당할 수 있는 교수가 아닙니다."),
     CLASSROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "강의실을 찾을 수 없습니다."),
     DUPLICATE_SECTION(HttpStatus.CONFLICT, "같은 학기·과목에 이미 있는 분반입니다."),
