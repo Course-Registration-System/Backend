@@ -120,6 +120,17 @@ nxt AS (
 SELECT COUNT(*) FROM lecture l JOIN nxt USING (sem_no)
 WHERE l.grd_stat = 'CONFIRMED' AND l.cnfm_dtm >= nxt.cart_start;
 
+-- CHECK 등급이 기준표(총점)와 다름. 상대평가 비율은 점수를 조정해 맞추고, 재수강만 총점과 관계없이 A- 상한 | 0
+SELECT COUNT(*) FROM grade g
+JOIN enrollment e ON e.std_no = g.std_no AND e.lec_no = g.lec_no
+WHERE g.tot_scr IS NOT NULL AND g.ltr_grd IS NOT NULL
+  AND g.ltr_grd <> CASE WHEN e.retake_yn = 'Y' AND g.tot_scr >= 90 THEN 'A-'
+                        WHEN g.tot_scr >= 97 THEN 'A+' WHEN g.tot_scr >= 94 THEN 'A0' WHEN g.tot_scr >= 90 THEN 'A-'
+                        WHEN g.tot_scr >= 87 THEN 'B+' WHEN g.tot_scr >= 84 THEN 'B0' WHEN g.tot_scr >= 80 THEN 'B-'
+                        WHEN g.tot_scr >= 77 THEN 'C+' WHEN g.tot_scr >= 74 THEN 'C0' WHEN g.tot_scr >= 70 THEN 'C-'
+                        WHEN g.tot_scr >= 67 THEN 'D+' WHEN g.tot_scr >= 64 THEN 'D0' WHEN g.tot_scr >= 60 THEN 'D-'
+                        ELSE 'F' END;
+
 -- CHECK 역할과 하위 테이블 불일치 | 0
 SELECT COUNT(*) FROM user_account u
 LEFT JOIN student s ON s.std_no = u.usr_no
