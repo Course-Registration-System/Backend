@@ -92,6 +92,11 @@ public class AcademicSchedulePolicy implements SchedulePolicy {
         return repository.findAdjustEnd(semNo);
     }
 
+    @Override
+    public Optional<LocalDateTime> registrationEnd(int semNo) {
+        return repository.findRegistrationEnd(semNo);
+    }
+
     private LocalDateTime now() {
         return LocalDateTime.now(clock);
     }
