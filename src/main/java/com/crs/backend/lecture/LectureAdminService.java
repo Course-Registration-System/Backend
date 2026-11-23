@@ -186,14 +186,11 @@ public class LectureAdminService {
         }
     }
 
-    /**
-     * 대면 수업은 정정 기간(개강 주)이 시작되기 전까지만 강의실을 미배정으로 둘 수 있습니다. 정정이 없는 학기는 이 검사가 열려 있지만, 신청
-     * 종료 뒤에는 checkUpdateOpen 이 수정을 막으므로 마지막 수강신청일 종료까지 미배정이 허용됩니다.
-     */
+    /** 대면 수업은 정정 기간(개강 주)이 시작되기 전까지만 강의실을 미배정으로 둘 수 있습니다. 정정이 없는 학기는 마지막 수강신청일 종료까지입니다. */
     private void checkRoomAssigned(int semNo, List<LectureTimeSlot> slots) {
         boolean unassigned =
                 slots.stream().anyMatch(slot -> slot.clsType() == ClsType.OFFLINE && slot.roomCd() == null);
-        if (unassigned && passed(schedulePolicy.adjustStart(semNo))) {
+        if (unassigned && passed(schedulePolicy.adjustStart(semNo).or(() -> schedulePolicy.registrationEnd(semNo)))) {
             throw new BusinessException(ErrorCode.ROOM_REQUIRED);
         }
     }

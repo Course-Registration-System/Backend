@@ -37,5 +37,4 @@ SELECT MAX(end_dtm) FROM academic_schedule
 ## 적용 (모듈 B)
 
 - `EnrollmentService.checkAdminPeriod`: `adjustEnd` → `registrationEnd`
-- `LectureAdminService`: 변경·폐강 마감은 `adjustEnd` → `registrationEnd`
-- 미배정 마감은 `adjustStart` 그대로 둔다. 정정이 없으면 이 검사는 열려 있지만, 신청 종료 뒤에는 변경 자체가 막혀 결과적으로 마지막 수강신청일 종료까지만 미배정이 허용된다.
+- `LectureAdminService`: 변경·폐강 마감은 `adjustEnd` → `registrationEnd`. 미배정 마감은 `adjustStart`, 정정이 없으면 `registrationEnd`
