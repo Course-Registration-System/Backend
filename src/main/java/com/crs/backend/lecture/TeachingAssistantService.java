@@ -45,7 +45,7 @@ public class TeachingAssistantService {
         // 학생 확인: 활성 계정이고 졸업생이 아니어야 한다(졸업생은 로그인과 성적 조회만, USR-02). 휴학생은 된다
         StudentStatusRow student = teachingAssistantRepository
                 .findStudentStatus(stdNo)
-                .orElseThrow(() -> new BusinessException(ErrorCode.STUDENT_NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         if (INACTIVE.equals(student.acctStat()) || GRADUATED.equals(student.stdStat())) {
             throw new BusinessException(ErrorCode.ASSISTANT_NOT_ELIGIBLE);
         }

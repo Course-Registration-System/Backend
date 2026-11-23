@@ -124,10 +124,10 @@ class TeachingAssistantControllerTest extends IntegrationTest {
     void 학생이_아니거나_없는_학번은_404() throws Exception {
         addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, "99999999")
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("STUDENT_NOT_FOUND"));
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
         addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, TA_LECTURE_PROFESSOR)
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("STUDENT_NOT_FOUND"));
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
     }
 
     @Test

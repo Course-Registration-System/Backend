@@ -65,8 +65,7 @@ public enum ErrorCode {
     PREREQUISITE_CYCLE(HttpStatus.CONFLICT, "선수과목이 순환합니다."),
     COURSE_IN_USE(HttpStatus.CONFLICT, "개설된 강의가 있는 과목은 과목명과 권장학년만 바꿀 수 있습니다."),
 
-    // 조교 (LEC-04). 강의가 없거나 폐강일 때는 위의 LECTURE_NOT_FOUND·LECTURE_CLOSED 를 같이 씁니다
-    STUDENT_NOT_FOUND(HttpStatus.NOT_FOUND, "학생을 찾을 수 없습니다."),
+    // 조교 (LEC-04). 강의가 없거나 폐강일 때는 위의 LECTURE_NOT_FOUND·LECTURE_CLOSED, 학생이 없을 때는 USER_NOT_FOUND 를 같이 씁니다
     ASSISTANT_NOT_ELIGIBLE(HttpStatus.CONFLICT, "비활성 계정이거나 졸업한 학생은 조교로 지정할 수 없습니다."),
     ASSISTANT_IS_ENROLLED(HttpStatus.CONFLICT, "이 강의를 수강하는 학생은 조교가 될 수 없습니다."),
     DUPLICATE_ASSISTANT(HttpStatus.CONFLICT, "이미 이 강의의 조교입니다."),
