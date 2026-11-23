@@ -271,15 +271,20 @@ public class EnrollmentService {
         }
     }
 
-    /** 관리자는 학년과 상관없이 첫 수강신청일부터 정정 기간 종료 전까지 추가·취소합니다. */
+    /**
+     * 관리자는 학년과 상관없이 첫 수강신청일부터 신청 종료(정정 종료, 정정이 없으면 마지막 수강신청일 종료) 전까지 추가·취소합니다. 수강신청
+     * 일정이 있으면 신청 종료도 있으므로, 시작했는데 종료가 비는 경우는 없습니다.
+     */
     private void checkAdminPeriod(int semNo) {
         LocalDateTime now = LocalDateTime.now(clock);
         boolean started = schedulePolicy
                 .enrollStart(semNo)
                 .map(start -> !now.isBefore(start))
                 .orElse(false);
-        boolean over =
-                schedulePolicy.adjustEnd(semNo).map(end -> !now.isBefore(end)).orElse(false);
+        boolean over = schedulePolicy
+                .registrationEnd(semNo)
+                .map(end -> !now.isBefore(end))
+                .orElse(false);
         if (!started || over) {
             throw new BusinessException(ErrorCode.ENROLL_CLOSED);
         }

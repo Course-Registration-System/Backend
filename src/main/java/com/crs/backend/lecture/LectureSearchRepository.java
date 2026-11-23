@@ -90,17 +90,9 @@ public class LectureSearchRepository {
                             rs.getObject("end_tm", LocalTime.class),
                             clsType,
                             rs.getString("room_cd"),
-                            place(clsType, roomNm)));
+                            clsType.place(roomNm)));
         });
         return slots;
-    }
-
-    // 강의실이 없으면 수업유형에 따라 "온라인" 또는 "미배정"
-    private static String place(ClsType clsType, String roomNm) {
-        if (roomNm != null) {
-            return roomNm;
-        }
-        return clsType == ClsType.ONLINE ? "온라인" : "미배정";
     }
 
     private static MapSqlParameterSource params(LectureSearchCondition condition) {

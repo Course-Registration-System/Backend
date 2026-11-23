@@ -124,10 +124,36 @@ class AcademicSchedulePolicyTest extends IntegrationTest {
     }
 
     @Test
+    void 성적_입력_기간은_시작_시각_포함_종료_시각_제외() {
+        // 2026-2(9) 성적입력 12-14 09:00 ~ 12-23 18:00
+        at(SeedTime.T0);
+        assertThat(policy.gradeOpen(Semester.Y2026_SECOND)).isTrue();
+        at("2026-12-14T09:00:00");
+        assertThat(policy.gradeOpen(Semester.Y2026_SECOND)).isTrue();
+        at("2026-12-14T08:59:59");
+        assertThat(policy.gradeOpen(Semester.Y2026_SECOND)).isFalse();
+        at("2026-12-23T18:00:00");
+        assertThat(policy.gradeOpen(Semester.Y2026_SECOND)).isFalse();
+
+        assertThat(policy.gradeEnd(Semester.Y2026_SECOND)).contains(LocalDateTime.parse("2026-12-23T18:00:00"));
+    }
+
+    @Test
     void 일정이_없는_학기는_기한이_비어_있다() {
         addSemester(99, "FIRST");
         assertThat(policy.cartStart(99)).isEmpty();
         assertThat(policy.adjustEnd(99)).isEmpty();
+        assertThat(policy.registrationEnd(99)).isEmpty();
+        assertThat(policy.gradeEnd(99)).isEmpty();
+        assertThat(policy.gradeOpen(99)).isFalse();
+    }
+
+    @Test
+    void 신청_종료는_정정_끝이고_정정이_없으면_마지막_수강신청일_끝이다() {
+        assertThat(policy.registrationEnd(Semester.Y2027_FIRST)).contains(LocalDateTime.parse("2027-03-09T17:00:00"));
+
+        jdbc.update("DELETE FROM academic_schedule WHERE sem_no = ? AND schd_type = 'ADJUST'", Semester.Y2027_FIRST);
+        assertThat(policy.registrationEnd(Semester.Y2027_FIRST)).contains(LocalDateTime.parse("2027-02-12T17:00:00"));
     }
 
     @Test

@@ -109,7 +109,7 @@ public class LectureAdminService {
     }
 
     // ⑥ 폐강: 강의상태를 바꾸고, 신청을 모두 취소하고, 장바구니에서도 뺀다.
-    // 정정 기간 안에만 해서, 신청이 취소된 학생이 정정 기간에 다른 강의를 신청할 수 있게 한다.
+    // 신청 종료 전에만 해서, 신청이 취소된 학생이 남은 기간에 다른 강의를 신청할 수 있게 한다.
     // 수강신청과 같은 순서(강의 → 수강신청)로 잠그려고 강의 행부터 잠근다
     @Transactional
     public LectureResponse close(int lecNo) {
@@ -119,7 +119,7 @@ public class LectureAdminService {
             throw new BusinessException(ErrorCode.LECTURE_CLOSED);
         }
         LocalDateTime now = LocalDateTime.now(clock);
-        if (passed(schedulePolicy.adjustEnd(current.semNo()))) {
+        if (passed(schedulePolicy.registrationEnd(current.semNo()))) {
             throw new BusinessException(ErrorCode.CLOSE_PERIOD_OVER);
         }
 
@@ -172,9 +172,9 @@ public class LectureAdminService {
         }
     }
 
-    /** 강의실·담당 교수·정원은 정정 기간이 끝나기 전까지만 바꿀 수 있습니다. */
+    /** 강의실·담당 교수·정원은 신청 종료(정정 종료, 정정이 없으면 마지막 수강신청일 종료) 전까지만 바꿀 수 있습니다. */
     private void checkUpdateOpen(int semNo) {
-        if (passed(schedulePolicy.adjustEnd(semNo))) {
+        if (passed(schedulePolicy.registrationEnd(semNo))) {
             throw new BusinessException(ErrorCode.UPDATE_PERIOD_OVER);
         }
     }
@@ -186,11 +186,11 @@ public class LectureAdminService {
         }
     }
 
-    /** 대면 수업은 정정 기간(개강 주)이 시작되기 전까지만 강의실을 미배정으로 둘 수 있습니다. */
+    /** 대면 수업은 정정 기간(개강 주)이 시작되기 전까지만 강의실을 미배정으로 둘 수 있습니다. 정정이 없는 학기는 마지막 수강신청일 종료까지입니다. */
     private void checkRoomAssigned(int semNo, List<LectureTimeSlot> slots) {
         boolean unassigned =
                 slots.stream().anyMatch(slot -> slot.clsType() == ClsType.OFFLINE && slot.roomCd() == null);
-        if (unassigned && passed(schedulePolicy.adjustStart(semNo))) {
+        if (unassigned && passed(schedulePolicy.adjustStart(semNo).or(() -> schedulePolicy.registrationEnd(semNo)))) {
             throw new BusinessException(ErrorCode.ROOM_REQUIRED);
         }
     }
