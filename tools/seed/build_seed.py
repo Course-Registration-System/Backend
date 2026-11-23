@@ -472,8 +472,27 @@ def score_grade(lec, ab, forced, retake):
     return dict(mid=sc[0], fin=sc[1], hw=sc[2], att=sc[3], tot=tot, ltr=g, base=g)
 
 
+def lower_score(g, letter, wt):
+    """총점이 letter 구간 맨 위가 되도록 항목 점수를 깎고 총점·등급을 다시 낸다(GRD-01: 비율은 점수를 조정해 맞춘다).
+    네 항목에서 같은 점수를 빼면 반영 비율 합이 100이라 총점(소수점 버림)이 정확히 그만큼 내려간다."""
+    i = ORDER.index(letter)
+    top = GRADE_TABLE[i - 1][1] - 1
+    keys = ("mid", "fin", "hw", "att")
+    total = lambda: math.floor(sum(g[k] * w for k, w in zip(keys, wt)) / 100)
+    d = g["tot"] - top
+    if d > 0 and min(g[k] for k in keys) >= d:
+        for k in keys:
+            g[k] -= d
+    while total() > top:
+        g[max(keys, key=lambda k: g[k])] -= 1
+    g["tot"] = total()
+    g["ltr"] = g["base"] = grade_of(g["tot"])
+    assert g["ltr"] == letter, (g, letter)
+
+
 def relative_fix(lec, rows):
-    """수강인원 10명 이상 상대평가 강의의 등급 비율을 맞춘다(보호 행은 건드리지 않는다)."""
+    """수강인원 10명 이상 상대평가 강의의 등급 비율을 맞춘다(보호 행은 건드리지 않는다).
+    비율을 넘는 학생은 등급만 바꾸지 않고 점수를 낮춰 기준표 등급이 되게 한다(GRD-01)."""
     c = COURSES[lec["cd"]]
     n = len(rows)
     exempt = (c["eval"] != "GRADE" or n < 10 or lec["exmp"] == "Y"
@@ -489,7 +508,7 @@ def relative_fix(lec, rows):
         while len(hits) > lim:
             e = hits.pop(0)
             assert not e["protect"], f"보호 행이 비율을 넘김: {lec['cd']}"
-            e["grade"]["ltr"] = to
+            lower_score(e["grade"], to, lec["wt"])
 
 
 def just_under_4(lecs):
