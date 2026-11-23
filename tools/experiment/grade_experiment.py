@@ -24,6 +24,7 @@
 import argparse
 import csv
 import math
+import os
 import statistics
 import subprocess
 import sys
@@ -152,14 +153,16 @@ GRADE_INDEXES = {"V0": [], "V1": ["ix_grade_lec (lec_no)"], "V1c": ["ix_grade_le
 
 class Db:
     def __init__(self, container, pw, database):
-        self.container, self.pw, self.database = container, pw, database
+        self.container, self.database = container, database
+        self.env = {**os.environ, "MYSQL_PWD": pw}
 
     def run(self, sql, raw=False):
-        cmd = ["docker", "exec", "-i", "-e", f"MYSQL_PWD={self.pw}", self.container, "mysql", "-uroot", "-N",
+        # 비밀번호는 docker exec 인자에 값을 쓰지 않고 환경 변수로 넘긴다(ps 로 보이지 않게)
+        cmd = ["docker", "exec", "-i", "-e", "MYSQL_PWD", self.container, "mysql", "-uroot", "-N",
                "--comments", "--default-character-set=utf8mb4", self.database]
         if raw:
             cmd.insert(cmd.index("-N"), "-r")
-        result = subprocess.run(cmd, input=sql.encode("utf-8"), capture_output=True)
+        result = subprocess.run(cmd, input=sql.encode("utf-8"), capture_output=True, env=self.env)
         if result.returncode != 0:
             sys.exit(result.stderr.decode("utf-8", "replace"))
         return result.stdout.decode("utf-8", "replace")
@@ -176,8 +179,8 @@ class Db:
         """버퍼 풀을 비운다. 시작할 때 덤프를 읽지 않게 띄웠으므로 재시작 직후가 콜드다."""
         subprocess.run(["docker", "restart", self.container], check=True, capture_output=True)
         for _ in range(60):
-            ok = subprocess.run(["docker", "exec", "-e", f"MYSQL_PWD={self.pw}", self.container, "mysql", "-uroot",
-                                 "-e", "SELECT 1"], capture_output=True)
+            ok = subprocess.run(["docker", "exec", "-e", "MYSQL_PWD", self.container, "mysql", "-uroot",
+                                 "-e", "SELECT 1"], capture_output=True, env=self.env)
             if ok.returncode == 0:
                 break
             time.sleep(1)
