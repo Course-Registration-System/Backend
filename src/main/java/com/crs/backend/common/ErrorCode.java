@@ -74,7 +74,11 @@ public enum ErrorCode {
     GRADE_ADJUST_NOT_ALLOWED(HttpStatus.CONFLICT, "등급은 상대평가 강의에서 기준표보다 낮게만 조정할 수 있습니다."),
     GRADE_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 제출한 성적입니다."),
     GRADE_INCOMPLETE(HttpStatus.CONFLICT, "점수가 비어 있는 수강생이 있습니다."),
-    GRADE_RATIO_EXCEEDED(HttpStatus.CONFLICT, "상대평가 등급 비율을 넘었습니다.");
+    GRADE_RATIO_EXCEEDED(HttpStatus.CONFLICT, "상대평가 등급 비율을 넘었습니다."),
+
+    // 성적 확정 (GRD-02). 이미 확정된 강의는 위의 GRADE_CONFIRMED 를 같이 씁니다
+    GRADE_PERIOD_NOT_OVER(HttpStatus.CONFLICT, "성적 입력 기간이 끝난 뒤에 확정할 수 있습니다."),
+    GRADE_NOT_SUBMITTED(HttpStatus.CONFLICT, "제출되지 않은 성적은 확정할 수 없습니다.");
 
     private final HttpStatus status;
     private final String message;
