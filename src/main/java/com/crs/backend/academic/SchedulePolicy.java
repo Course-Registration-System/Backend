@@ -22,7 +22,7 @@ public interface SchedulePolicy {
      */
     int semesterOrDefault(Integer semNo);
 
-    /** 지금이 그 학기의 장바구니 기간인지. */
+    /** 지금이 그 학기의 장바구니 기간인지. 장바구니는 전 학년이 같은 기간입니다. */
     boolean cartOpen(int semNo);
 
     /** 지금 그 학년 학생이 신청·취소할 수 있는지: 본인 학년 수강신청일, 전체 수강신청일, 정정 기간. */
@@ -48,4 +48,16 @@ public interface SchedulePolicy {
      * 수강신청일의 끝이고, 둘 다 없으면 비어 있습니다.
      */
     Optional<LocalDateTime> registrationEnd(int semNo);
+
+    /**
+     * 지금이 그 학기의 성적 입력 기간인지(GRD-01 입력·수정·제출). 시작 시각은 포함, 종료 시각은 제외합니다. 성적입력 일정이 없는 학기는
+     * false 입니다.
+     */
+    boolean gradeOpen(int semNo);
+
+    /**
+     * 성적 입력 기간의 끝. 이 시각부터 관리자가 확정할 수 있습니다(GRD-02 "성적 입력 기간 종료 후"). 성적입력 일정이 없는 학기는 비어
+     * 있습니다.
+     */
+    Optional<LocalDateTime> gradeEnd(int semNo);
 }

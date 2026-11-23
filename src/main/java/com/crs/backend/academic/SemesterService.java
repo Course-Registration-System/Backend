@@ -71,6 +71,10 @@ public class SemesterService {
         if (!request.startDtm().isBefore(request.endDtm())) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "시작일시는 종료일시보다 빨라야 합니다.");
         }
+        // 학년별로 기간이 다른 건 수강신청뿐이다. 장바구니·정정·성적입력은 전 학년이 같은 기간이고 판정도 학년을 보지 않는다
+        if (request.tgtYrLvl() != null && request.schdType() != SchdType.ENROLL) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "대상학년은 수강신청 일정에만 지정합니다.");
+        }
         // 시작일시가 지난 일정은 넣는 즉시 장바구니·신청 판정이 바뀌고, 시작된 일정은 지울 수도 없어서 막는다
         if (!request.startDtm().isAfter(now())) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "시작일시가 지난 일정은 등록할 수 없습니다.");

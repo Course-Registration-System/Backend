@@ -42,7 +42,10 @@ public class AcademicScheduleRepository {
                 """, semNo, now, now);
     }
 
-    /** 지금 그 학년이 쓸 수 있는 수강신청일(본인 학년 또는 전체) 또는 정정 일정이 열려 있는지. */
+    /**
+     * 지금 그 학년이 쓸 수 있는 수강신청일(본인 학년 또는 전체) 또는 정정 일정이 열려 있는지. 대상학년은 수강신청 일정에만 있고 정정은 늘 전
+     * 학년이지만, 조건은 두 유형에 같이 걸어 둡니다.
+     */
     public boolean isEnrollOpen(int semNo, int yrLvl, LocalDateTime now) {
         return exists("""
                 SELECT EXISTS (SELECT 1 FROM academic_schedule
@@ -98,6 +101,18 @@ public class AcademicScheduleRepository {
         return queryTime(
                 "SELECT MAX(end_dtm) FROM academic_schedule WHERE sem_no = ? AND schd_type IN ('ENROLL', 'ADJUST')",
                 semNo);
+    }
+
+    /** 지금 열려 있는 성적입력 일정이 있는지. 시작 시각은 포함, 종료 시각은 제외합니다. */
+    public boolean isGradeOpen(int semNo, LocalDateTime now) {
+        return exists("""
+                SELECT EXISTS (SELECT 1 FROM academic_schedule
+                                WHERE sem_no = ? AND schd_type = 'GRADE' AND start_dtm <= ? AND ? < end_dtm)
+                """, semNo, now, now);
+    }
+
+    public Optional<LocalDateTime> findGradeEnd(int semNo) {
+        return queryTime("SELECT MAX(end_dtm) FROM academic_schedule WHERE sem_no = ? AND schd_type = 'GRADE'", semNo);
     }
 
     private Optional<LocalDateTime> queryTime(String sql, int semNo) {

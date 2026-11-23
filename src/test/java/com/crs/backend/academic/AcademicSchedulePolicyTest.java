@@ -124,11 +124,28 @@ class AcademicSchedulePolicyTest extends IntegrationTest {
     }
 
     @Test
+    void 성적_입력_기간은_시작_시각_포함_종료_시각_제외() {
+        // 2026-2(9) 성적입력 12-14 09:00 ~ 12-23 18:00
+        at(SeedTime.T0);
+        assertThat(policy.gradeOpen(Semester.Y2026_SECOND)).isTrue();
+        at("2026-12-14T09:00:00");
+        assertThat(policy.gradeOpen(Semester.Y2026_SECOND)).isTrue();
+        at("2026-12-14T08:59:59");
+        assertThat(policy.gradeOpen(Semester.Y2026_SECOND)).isFalse();
+        at("2026-12-23T18:00:00");
+        assertThat(policy.gradeOpen(Semester.Y2026_SECOND)).isFalse();
+
+        assertThat(policy.gradeEnd(Semester.Y2026_SECOND)).contains(LocalDateTime.parse("2026-12-23T18:00:00"));
+    }
+
+    @Test
     void 일정이_없는_학기는_기한이_비어_있다() {
         addSemester(99, "FIRST");
         assertThat(policy.cartStart(99)).isEmpty();
         assertThat(policy.adjustEnd(99)).isEmpty();
         assertThat(policy.registrationEnd(99)).isEmpty();
+        assertThat(policy.gradeEnd(99)).isEmpty();
+        assertThat(policy.gradeOpen(99)).isFalse();
     }
 
     @Test
