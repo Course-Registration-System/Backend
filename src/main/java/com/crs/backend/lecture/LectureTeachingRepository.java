@@ -48,10 +48,9 @@ public class LectureTeachingRepository {
             rs.getString("room_cd"),
             rs.getString("room_nm"));
 
-    // 수강 인원은 신청상태가 '신청'인 건만 센다(LEC-01)
+    // 수강 인원은 신청상태가 '신청'인 건만 센다(LEC-01). lecture.enrl_cnt 가 신청·취소·폐강 때 같이 바뀌는 그 값이라 강의 검색·장바구니와 같이 이것을 쓴다
     private static final String LECTURE_SELECT = """
-            SELECT l.lec_no, l.crs_cd, c.crs_nm, l.sect_no, l.cap, l.lec_stat,
-                   (SELECT COUNT(*) FROM enrollment e WHERE e.lec_no = l.lec_no AND e.enrl_stat = 'ENROLLED') AS enrl_cnt
+            SELECT l.lec_no, l.crs_cd, c.crs_nm, l.sect_no, l.cap, l.lec_stat, l.enrl_cnt
               FROM lecture l
               JOIN course c ON c.crs_cd = l.crs_cd
             """;

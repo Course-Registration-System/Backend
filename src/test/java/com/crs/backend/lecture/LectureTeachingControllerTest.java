@@ -39,6 +39,8 @@ class LectureTeachingControllerTest extends IntegrationTest {
     private static final String NO_ROOM_LECTURE_PROFESSOR = "100004";
     /** 시드: 조교(20240005)가 2026-2 에 배정된 강의 */
     private static final int TA_CURRENT_LECTURE = 162;
+    /** 시드: 데모 교수의 2026-2 강의(1010023, 월·수). 요일 순서 테스트에서 화·목으로 바꿔 쓴다 */
+    private static final int TUE_THU_LECTURE = 161;
 
     @Autowired
     MockMvc mvc;
@@ -56,23 +58,23 @@ class LectureTeachingControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.semNo").value(Semester.Y2026_SECOND))
                 .andExpect(jsonPath("$.yr").value(2026))
                 .andExpect(jsonPath("$.semType").value("SECOND"))
-                .andExpect(jsonPath("$.lectures", hasSize(7)))
+                .andExpect(jsonPath("$.lectures", hasSize(6)))
                 .andExpect(jsonPath(
                         "$.lectures[*].crsCd",
-                        contains("1010005", "1010010", "1010011", "1010012", "1010022", "1010023", "1030018")))
+                        contains("1010005", "1010010", "1010011", "1010012", "1010023", "1030018")))
                 // 성적 입력 시연 강의: 수강생 12명, 월·수 대강당
-                .andExpect(jsonPath("$.lectures[6].lecNo").value(Lecture.DEMO_GRADE))
-                .andExpect(jsonPath("$.lectures[6].crsNm").value("데이터리터러시"))
-                .andExpect(jsonPath("$.lectures[6].sectNo").value(1))
-                .andExpect(jsonPath("$.lectures[6].cap").value(60))
-                .andExpect(jsonPath("$.lectures[6].enrlCnt").value(12))
-                .andExpect(jsonPath("$.lectures[6].lecStat").value("OPEN"))
-                .andExpect(jsonPath("$.lectures[6].timeSlots", hasSize(2)))
-                .andExpect(jsonPath("$.lectures[6].timeSlots[0].dow").value("MON"))
-                .andExpect(jsonPath("$.lectures[6].timeSlots[1].dow").value("WED"))
-                .andExpect(jsonPath("$.lectures[6].timeSlots[0].clsType").value("OFFLINE"))
-                .andExpect(jsonPath("$.lectures[6].timeSlots[0].roomCd").value("01101"))
-                .andExpect(jsonPath("$.lectures[6].timeSlots[0].place").value("대강당"));
+                .andExpect(jsonPath("$.lectures[5].lecNo").value(Lecture.DEMO_GRADE))
+                .andExpect(jsonPath("$.lectures[5].crsNm").value("데이터리터러시"))
+                .andExpect(jsonPath("$.lectures[5].sectNo").value(1))
+                .andExpect(jsonPath("$.lectures[5].cap").value(60))
+                .andExpect(jsonPath("$.lectures[5].enrlCnt").value(12))
+                .andExpect(jsonPath("$.lectures[5].lecStat").value("OPEN"))
+                .andExpect(jsonPath("$.lectures[5].timeSlots", hasSize(2)))
+                .andExpect(jsonPath("$.lectures[5].timeSlots[0].dow").value("MON"))
+                .andExpect(jsonPath("$.lectures[5].timeSlots[1].dow").value("WED"))
+                .andExpect(jsonPath("$.lectures[5].timeSlots[0].clsType").value("OFFLINE"))
+                .andExpect(jsonPath("$.lectures[5].timeSlots[0].roomCd").value("01101"))
+                .andExpect(jsonPath("$.lectures[5].timeSlots[0].place").value("대강당"));
     }
 
     @Test
@@ -153,13 +155,20 @@ class LectureTeachingControllerTest extends IntegrationTest {
     }
 
     @Test
-    void 없는_학기는_빈_목록() throws Exception {
+    void 없는_학기는_404() throws Exception {
         as(Account.DEMO_PROFESSOR, Role.PROFESSOR, PATH + "?semNo=9999")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.semNo").value(9999))
-                .andExpect(jsonPath("$.yr").isEmpty())
-                .andExpect(jsonPath("$.semType").isEmpty())
-                .andExpect(jsonPath("$.lectures", hasSize(0)));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("SEMESTER_NOT_FOUND"));
+    }
+
+    @Test
+    void 현재_학기가_지정되지_않았으면_404() throws Exception {
+        // 현재 학기 지정은 학사 모듈 일이라 테스트에서만 직접 바꾼다(롤백됨)
+        jdbc.update("UPDATE semester SET cur_sem_yn = 'N'");
+
+        as(Account.DEMO_PROFESSOR, Role.PROFESSOR, PATH)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("SEMESTER_NOT_FOUND"));
     }
 
     @Test
@@ -181,9 +190,16 @@ class LectureTeachingControllerTest extends IntegrationTest {
 
     @Test
     void 강의시간은_요일_순서대로() throws Exception {
-        // 캡스톤디자인2(1010022)는 화·목. DB 에는 THU 가 먼저 저장되어 있어도 TUE, THU 순으로 준다
+        // 1010023 강의를 화·목으로 바꾼다(롤백됨). 기본키 순서(글자순)로는 THU 가 TUE 보다 먼저지만 TUE, THU 순으로 준다
+        jdbc.update("DELETE FROM lecture_time_slot WHERE lec_no = ?", TUE_THU_LECTURE);
+        jdbc.update(
+                "INSERT INTO lecture_time_slot (lec_no, dow, start_tm, end_tm, cls_type, room_cd) VALUES"
+                        + " (?, 'THU', '10:30', '11:45', 'OFFLINE', '06102'), (?, 'TUE', '10:30', '11:45', 'OFFLINE', '06102')",
+                TUE_THU_LECTURE,
+                TUE_THU_LECTURE);
+
         as(Account.DEMO_PROFESSOR, Role.PROFESSOR, PATH)
-                .andExpect(jsonPath("$.lectures[4].crsCd").value("1010022"))
+                .andExpect(jsonPath("$.lectures[4].lecNo").value(TUE_THU_LECTURE))
                 .andExpect(jsonPath("$.lectures[4].timeSlots[*].dow", contains("TUE", "THU")))
                 .andExpect(jsonPath("$.lectures[*].timeSlots[*].startTm", hasItem("09:00:00")));
     }

@@ -30,7 +30,7 @@ public class LectureTeachingService {
         this.lectureTeachingRepository = lectureTeachingRepository;
     }
 
-    /** semNo 가 null 이면 현재 학기를 봅니다. */
+    /** semNo 가 null 이면 현재 학기를 봅니다. 없는 학기이거나 현재 학기가 지정되지 않았으면 404 SEMESTER_NOT_FOUND 입니다. */
     @Transactional(readOnly = true)
     public TeachingLectureListResponse list(CurrentUser user, Integer semNo) {
         // 관리자는 담당 강의가 없다(처리 주체는 교수·조교)
@@ -42,10 +42,7 @@ public class LectureTeachingService {
         Optional<SemesterRow> semester = semNo == null
                 ? lectureTeachingRepository.findCurrentSemester()
                 : lectureTeachingRepository.findSemester(semNo);
-        if (semester.isEmpty()) {
-            return new TeachingLectureListResponse(semNo, null, null, List.of());
-        }
-        SemesterRow sem = semester.get();
+        SemesterRow sem = semester.orElseThrow(() -> new BusinessException(ErrorCode.SEMESTER_NOT_FOUND));
 
         // 교수는 담당 강의, 학생은 조교로 배정된 강의
         List<TeachingLectureRow> lectures = switch (user.role()) {
