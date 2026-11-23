@@ -18,6 +18,7 @@ L           29,997   8      4,500            약 77만         13초 / 25초 / 1
 분포
 - 강의 인기는 쏠림(Zipf). 70% 는 소속 학과 강의에서, 30% 는 전체에서 고른다. 일부 강의는 정원이 찬다.
 - 점수는 학생 실력 + 강의 난이도 + 잡음(정규분포). 10명 이상 강의는 상대평가(A 40%, A+B 80%)를 지킨다.
+  비율을 넘는 학생은 점수를 낮춰 등급을 맞춘다(등급은 늘 기준표대로, 재수강만 A- 상한).
 - 재수강 약 5%(C+ 이하를 받은 과목, 학생당 10과목까지), 채플은 정규학기마다, 휴학 약 10%.
 
 지키는 규칙
@@ -113,6 +114,25 @@ def grade_of(tot):
 
 def clamp(v, lo=0, hi=100):
     return max(lo, min(hi, v))
+
+
+def total(comp):
+    return round((comp[0] * 30 + comp[1] * 40 + comp[2] * 20 + comp[3] * 10) / 100)
+
+
+def lower_to(comp, letter):
+    """총점이 letter 구간 맨 위가 되도록 항목 점수를 깎는다(GRD-01: 상대평가 비율은 교수가 점수를 조정해 맞춘다).
+    네 항목에서 같은 점수를 빼면 반영 비율 합이 100% 라 총점이 거의 그만큼 내려간다. 반올림 때문에 1점 남거나
+    0 아래로 갈 항목이 있으면 큰 항목부터 1점씩 더 깎는다."""
+    i = ORDER.index(letter)
+    top = GRADE_TABLE[i - 1][1] - 1 if i else 100
+    d = total(comp) - top
+    if d <= 0:
+        return comp
+    comp = [c - d for c in comp] if min(comp) >= d else list(comp)
+    while total(comp) > top:
+        comp[comp.index(max(comp))] -= 1
+    return comp
 
 
 class Writer:
@@ -382,17 +402,20 @@ def main():
             for st in members:
                 base = 84 + 7 * st["ability"] - 4 * diff
                 comp = [clamp(round(base + rng.gauss(0, 7))) for _ in range(4)]
-                tot = round((comp[0] * 30 + comp[1] * 40 + comp[2] * 20 + comp[3] * 10) / 100)
+                tot = total(comp)
                 scored.append([st, comp, tot, grade_of(tot)])
             scored.sort(key=lambda x: -x[2])
+            # 상대평가: 비율을 넘는 학생은 점수를 낮춰 등급을 맞춘다. 등급은 늘 기준표(총점)대로다(GRD-01).
+            # 재수강 A- 상한은 총점과 관계없이 등급만 정하므로 아래 신청·성적 행에서 따로 적용한다
             if len(scored) >= 10 and not lec["exempt"]:
                 a_max, ab_max = int(len(scored) * 0.4), int(len(scored) * 0.8)
                 for i, row in enumerate(scored):
-                    g = row[3]
-                    if g.startswith("A") and i >= a_max:
-                        row[3] = "B+"
-                    if row[3][0] in "AB" and i >= ab_max:
-                        row[3] = "C+"
+                    if row[3].startswith("A") and i >= a_max:
+                        row[1] = lower_to(row[1], "B+")
+                    if grade_of(total(row[1]))[0] in "AB" and i >= ab_max:
+                        row[1] = lower_to(row[1], "C+")
+                    row[2] = total(row[1])
+                    row[3] = grade_of(row[2])
             for st, comp, tot, g in scored:
                 letters[(st["no"], lec["no"])] = (g, (comp, tot))
 
