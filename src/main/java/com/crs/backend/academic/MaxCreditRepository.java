@@ -21,7 +21,7 @@ import org.springframework.stereotype.Repository;
  *
  * <p>모듈 경계의 예외: {@code student} 는 사용자 관리(USR-02, user 모듈) 테이블이지만 학년({@code yr_lvl})과 졸업({@code std_stat =
  * 'GRADUATED'})은 여기서 직접 바꿉니다({@link #recalculateYearLevels}, {@link #graduate}). 전원을 한 문장·한 트랜잭션으로 처리하기
- * 위해서입니다(D27, README "패키지 안 구성"). 학적상태 중 재학·휴학은 USR-02 가 바꾸고 여기서는 읽기만 합니다.
+ * 위해서입니다(D27, README "패키지 안 구성"). 재학·휴학과 졸업 바로잡기는 USR-02 가 하고, 여기서는 졸업으로만 바꿉니다.
  */
 @Repository
 public class MaxCreditRepository {
@@ -134,7 +134,7 @@ public class MaxCreditRepository {
 
     /**
      * 졸업 요건(D26)을 채운 재학생을 졸업 처리하고 그 수를 돌려줍니다. 요건: 다닌 정규학기 8개 이상, 채플을 뺀 이수 학점 130 이상, 채플 P 학기
-     * 6개 이상. 졸업은 되돌리지 않습니다.
+     * 6개 이상. 여기서는 졸업을 되돌리지 않습니다(바로잡기는 USR-02).
      */
     public int graduate(int targetOrd) {
         return jdbc.update("""
