@@ -92,6 +92,16 @@ public class AcademicSchedulePolicy implements SchedulePolicy {
         return repository.findAdjustEnd(semNo);
     }
 
+    @Override
+    public boolean gradeOpen(int semNo) {
+        return repository.isGradeOpen(semNo, now());
+    }
+
+    @Override
+    public Optional<LocalDateTime> gradeEnd(int semNo) {
+        return repository.findGradeEnd(semNo);
+    }
+
     private LocalDateTime now() {
         return LocalDateTime.now(clock);
     }

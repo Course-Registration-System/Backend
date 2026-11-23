@@ -18,6 +18,10 @@ import org.springframework.stereotype.Repository;
  *
  * <p>이수 내역은 신청상태가 '신청'이고 성적이 확정된 강의만 봅니다. 학기 순서는 sem_no 가 아니라 연도와 학기구분으로 정하며, 산정
  * 대상 학기보다 앞선 학기만 셉니다(:targetOrd).
+ *
+ * <p>모듈 경계의 예외: {@code student} 는 사용자 관리(USR-02, user 모듈) 테이블이지만 학년({@code yr_lvl})과 졸업({@code std_stat =
+ * 'GRADUATED'})은 여기서 직접 바꿉니다({@link #recalculateYearLevels}, {@link #graduate}). 전원을 한 문장·한 트랜잭션으로 처리하기
+ * 위해서입니다(D27, README "패키지 안 구성"). 학적상태 중 재학·휴학은 USR-02 가 바꾸고 여기서는 읽기만 합니다.
  */
 @Repository
 public class MaxCreditRepository {

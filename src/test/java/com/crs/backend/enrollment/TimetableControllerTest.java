@@ -1,6 +1,7 @@
 package com.crs.backend.enrollment;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -113,6 +114,17 @@ class TimetableControllerTest extends IntegrationTest {
                         .value((Object) null))
                 .andExpect(jsonPath("$.lectures[?(@.lecNo == " + Lecture.ONLINE + ")].profNm")
                         .isNotEmpty());
+    }
+
+    @Test
+    void 장소는_강의_검색과_같이_온라인_미배정으로_표시한다() throws Exception {
+        enroll(Student.DEMO, Lecture.ONLINE, "ENROLLED");
+        enroll(Student.DEMO, Lecture.NO_ROOM, "ENROLLED");
+        timetable(Student.DEMO, Role.STUDENT, "?semNo=" + Semester.Y2027_FIRST)
+                .andExpect(jsonPath("$.lectures[?(@.lecNo == " + Lecture.ONLINE + ")].timeSlots[0].place")
+                        .value("온라인"))
+                .andExpect(jsonPath("$.lectures[?(@.lecNo == " + Lecture.NO_ROOM + ")].timeSlots[*].place")
+                        .value(hasItem("미배정")));
     }
 
     @Test
