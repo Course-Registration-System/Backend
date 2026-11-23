@@ -4,7 +4,8 @@
      root 비밀번호는 --password, 환경 변수 MYSQL_ROOT_PASSWORD, 프로젝트 루트 .env 순서로 찾는다.
 
 순서
-1. DB 를 지우고 다시 만든 뒤 V1__init_schema.sql 로 테이블을 만든다(개발 DB crs 는 건드리지 않는다)
+1. DB 를 지우고 다시 만든 뒤 V*__*.sql 마이그레이션을 버전 순서대로 적용한다(R__ 는 빼고).
+   DB 이름은 crs_bulk 로 시작해야 한다(개발 DB crs 나 시스템 DB 를 지우지 않게)
 2. CSV 를 컨테이너의 /var/lib/mysql-files/bulk 로 복사한다(MySQL 이미지의 secure_file_priv 위치)
 3. 부모 테이블부터(TABLES 순서) LOAD DATA 로 넣고 통계를 갱신한다(ANALYZE TABLE).
    FK·UNIQUE 검사를 끄지 않으므로 고아 행이나 키 중복이 있으면 적재가 실패한다
@@ -15,6 +16,7 @@
 """
 import argparse
 import os
+import re
 import subprocess
 import sys
 import time
@@ -24,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gen_bulk import TABLES  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
-SCHEMA = REPO / "src/main/resources/db/migration/V1__init_schema.sql"
+MIGRATIONS = REPO / "src/main/resources/db/migration"
 SEED_CHECKS = REPO / "src/test/resources/seed/seed-checks.sql"
 # 시드의 특정 학생 사례를 보는 검사. 대량 데이터의 같은 학번은 다른 학생이라 건너뛴다
 SEED_ONLY = {
@@ -112,14 +114,23 @@ def root_password(arg):
     sys.exit("root 비밀번호가 없습니다. --password 또는 MYSQL_ROOT_PASSWORD 를 주세요.")
 
 
+def migrations():
+    """V1__a.sql, V1_1__b.sql, V2__c.sql 처럼 버전 순서대로. R__(반복 마이그레이션)는 시드·권한이라 뺀다."""
+    def version(path):
+        return [int(n) for n in path.name[1:].split("__")[0].split("_")]
+    return sorted(MIGRATIONS.glob("V*__*.sql"), key=version)
+
+
 def mysql(container, password, sql, database=None, table=False):
-    cmd = ["docker", "exec", "-i", "-e", f"MYSQL_PWD={password}", container, "mysql", "-uroot",
+    # 비밀번호는 docker exec 인자에 값을 쓰지 않고 환경 변수로 넘긴다(ps 로 보이지 않게)
+    cmd = ["docker", "exec", "-i", "-e", "MYSQL_PWD", container, "mysql", "-uroot",
            "--default-character-set=utf8mb4"]
     if not table:
         cmd.append("-N")
     if database:
         cmd.append(database)
-    result = subprocess.run(cmd, input=sql.encode("utf-8"), capture_output=True)
+    result = subprocess.run(cmd, input=sql.encode("utf-8"), capture_output=True,
+                            env={**os.environ, "MYSQL_PWD": password})
     if result.returncode != 0:
         sys.exit(result.stderr.decode("utf-8", "replace"))
     return result.stdout.decode("utf-8", "replace")
@@ -132,15 +143,17 @@ def main():
     parser.add_argument("--database", default="crs_bulk")
     parser.add_argument("--password")
     args = parser.parse_args()
-    if args.database == "crs":
-        sys.exit("개발 DB(crs)에는 적재하지 않습니다. 다른 이름을 주세요.")
+    # DB 를 지우고 다시 만들기 때문에 이름을 좁혀 둔다. SQL 에 이어 붙이므로 영문·숫자·_ 만 받는다
+    if not re.fullmatch(r"crs_bulk\w*", args.database, re.ASCII):
+        sys.exit("대량 데이터 DB 이름은 crs_bulk 로 시작해야 합니다(영문·숫자·_ 만).")
     pw = root_password(args.password)
     db = args.database
 
     started = time.time()
     mysql(args.container, pw, f"DROP DATABASE IF EXISTS {db}; CREATE DATABASE {db};")
-    mysql(args.container, pw, SCHEMA.read_text(encoding="utf-8"), db)
-    print(f"스키마 생성: {db}")
+    for path in migrations():
+        mysql(args.container, pw, path.read_text(encoding="utf-8"), db)
+    print(f"스키마 생성: {db} ({', '.join(p.name for p in migrations())})")
 
     subprocess.run(["docker", "exec", args.container, "rm", "-rf", REMOTE_DIR], check=True)
     subprocess.run(["docker", "cp", str(args.dir.resolve()), f"{args.container}:{REMOTE_DIR}"], check=True)
