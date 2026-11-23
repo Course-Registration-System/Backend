@@ -1,7 +1,5 @@
 package com.crs.backend.lecture;
 
-import java.time.LocalTime;
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.RowMapper;
@@ -10,7 +8,8 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * 담당 강의 조회(LEC-01)와 강의 관리 권한 확인 SQL. 모두 읽기만 합니다. lecture·lecture_time_slot·enrollment 는 강의 개설·수강신청 모듈,
+ * 담당 강의 조회(LEC-01)와 강의 관리 권한 확인 SQL. 모두 읽기만 합니다. 강의시간은 {@link LectureSearchRepository#findSlots} 를 씁니다.
+ * lecture·enrollment 는 강의 개설·수강신청 모듈,
  * semester 는 학사 모듈 소관입니다.
  */
 @Repository
@@ -23,10 +22,6 @@ public class LectureTeachingRepository {
     public record TeachingLectureRow(
             int lecNo, String crsCd, String crsNm, int sectNo, int cap, int enrlCnt, LecStat lecStat) {}
 
-    /** 강의시간 한 칸과 강의실명. roomCd·roomNm 은 온라인이거나 미배정이면 null 입니다. */
-    public record TimeSlotRow(
-            int lecNo, Dow dow, LocalTime startTm, LocalTime endTm, ClsType clsType, String roomCd, String roomNm) {}
-
     private static final RowMapper<SemesterRow> SEMESTER =
             (rs, rowNum) -> new SemesterRow(rs.getInt("sem_no"), rs.getInt("yr"), rs.getString("sem_type"));
 
@@ -38,15 +33,6 @@ public class LectureTeachingRepository {
             rs.getInt("cap"),
             rs.getInt("enrl_cnt"),
             LecStat.valueOf(rs.getString("lec_stat")));
-
-    private static final RowMapper<TimeSlotRow> TIME_SLOT = (rs, rowNum) -> new TimeSlotRow(
-            rs.getInt("lec_no"),
-            Dow.valueOf(rs.getString("dow")),
-            rs.getObject("start_tm", LocalTime.class),
-            rs.getObject("end_tm", LocalTime.class),
-            ClsType.valueOf(rs.getString("cls_type")),
-            rs.getString("room_cd"),
-            rs.getString("room_nm"));
 
     // 수강 인원은 신청상태가 '신청'인 건만 센다(LEC-01). lecture.enrl_cnt 가 신청·취소·폐강 때 같이 바뀌는 그 값이라 강의 검색·장바구니와 같이 이것을 쓴다
     private static final String LECTURE_SELECT = """
@@ -116,20 +102,6 @@ public class LectureTeachingRepository {
                         + " ORDER BY l.crs_cd, l.sect_no",
                 new MapSqlParameterSource().addValue("semNo", semNo).addValue("stdNo", stdNo),
                 LECTURE);
-    }
-
-    /** 주어진 강의들의 강의시간. 강의번호, 요일(월→일), 시작시각 순. */
-    public List<TimeSlotRow> findTimeSlots(Collection<Integer> lecNos) {
-        if (lecNos.isEmpty()) {
-            return List.of();
-        }
-        return jdbc.query("""
-                SELECT t.lec_no, t.dow, t.start_tm, t.end_tm, t.cls_type, t.room_cd, r.room_nm
-                  FROM lecture_time_slot t
-                  LEFT JOIN classroom r ON r.room_cd = t.room_cd
-                 WHERE t.lec_no IN (:lecNos)
-                 ORDER BY t.lec_no, FIELD(t.dow, 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'), t.start_tm
-                """, new MapSqlParameterSource("lecNos", lecNos), TIME_SLOT);
     }
 
     public boolean isProfessorOf(int lecNo, String profNo) {
