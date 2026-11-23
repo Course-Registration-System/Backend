@@ -85,8 +85,9 @@ class DashboardControllerTest extends IntegrationTest {
 
     @Test
     void 정원_마감_강의는_신청인원이_정원에_다다른_개설_강의다() throws Exception {
-        // T0 에는 정원이 찬 강의가 없다. ONE_SEAT_LEFT 와 폐강 강의를 채우면 ONE_SEAT_LEFT 만 나온다
-        jdbc.update("UPDATE lecture SET enrl_cnt = cap WHERE lec_no IN (?, ?)", Lecture.ONE_SEAT_LEFT, Lecture.CLOSED);
+        // T0 에는 정원이 찬 강의가 없다. ONE_SEAT_LEFT 를 채우면 그것만 나온다.
+        // 폐강 강의는 신청인원이 0이라(ck_lecture_closed_no_enrl) 정원이 찰 수 없다
+        jdbc.update("UPDATE lecture SET enrl_cnt = cap WHERE lec_no = ?", Lecture.ONE_SEAT_LEFT);
         dashboard("?semNo=11")
                 .andExpect(jsonPath("$.fullLectures.length()").value(1))
                 .andExpect(jsonPath("$.fullLectures[0].lecNo").value(Lecture.ONE_SEAT_LEFT));
