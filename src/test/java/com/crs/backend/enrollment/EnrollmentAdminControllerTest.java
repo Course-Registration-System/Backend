@@ -105,6 +105,20 @@ class EnrollmentAdminControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 정정_일정이_없는_학기는_마지막_수강신청일이_끝나면_추가와_취소를_할_수_없다() throws Exception {
+        jdbc.update("DELETE FROM academic_schedule WHERE sem_no = ? AND schd_type = 'ADJUST'", Semester.Y2027_FIRST);
+
+        // 마지막 수강신청일(1학년, 2/12 10:00 ~ 17:00) 중
+        TestClock.at(clock, "2027-02-12T12:00:00");
+        add(COMPILER, STUDENT).andExpect(status().isCreated());
+
+        TestClock.at(clock, "2027-02-12T17:00:00");
+        cancel(COMPILER, STUDENT)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ENROLL_CLOSED"));
+    }
+
+    @Test
     void 정원_말고는_학생_신청과_같은_조건을_지킨다() throws Exception {
         String stdNo = SeedLectures.studentNeverTook(jdbc, "1010021", "1030007");
         add(COMPILER, stdNo).andExpect(status().isCreated());
