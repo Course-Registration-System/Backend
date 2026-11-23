@@ -40,8 +40,14 @@ public interface SchedulePolicy {
     /** 정정 기간의 시작(강의실 미배정 허용 마감). */
     Optional<LocalDateTime> adjustStart(int semNo);
 
-    /** 정정 기간의 끝(강의실·교수·정원 변경, 폐강, 관리자 수강신청 마감). */
+    /** 정정 기간의 끝. */
     Optional<LocalDateTime> adjustEnd(int semNo);
+
+    /**
+     * 신청 종료: 수강신청·정정 일정 중 가장 늦은 끝(강의실·교수·정원 변경, 폐강, 관리자 수강신청 마감). 정정 일정이 없는 학기는 마지막
+     * 수강신청일의 끝이고, 둘 다 없으면 비어 있습니다.
+     */
+    Optional<LocalDateTime> registrationEnd(int semNo);
 
     /**
      * 지금이 그 학기의 성적 입력 기간인지(GRD-01 입력·수정·제출). 시작 시각은 포함, 종료 시각은 제외합니다. 성적입력 일정이 없는 학기는

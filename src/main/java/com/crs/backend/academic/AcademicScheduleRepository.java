@@ -97,6 +97,12 @@ public class AcademicScheduleRepository {
         return queryTime("SELECT MAX(end_dtm) FROM academic_schedule WHERE sem_no = ? AND schd_type = 'ADJUST'", semNo);
     }
 
+    public Optional<LocalDateTime> findRegistrationEnd(int semNo) {
+        return queryTime(
+                "SELECT MAX(end_dtm) FROM academic_schedule WHERE sem_no = ? AND schd_type IN ('ENROLL', 'ADJUST')",
+                semNo);
+    }
+
     /** 지금 열려 있는 성적입력 일정이 있는지. 시작 시각은 포함, 종료 시각은 제외합니다. */
     public boolean isGradeOpen(int semNo, LocalDateTime now) {
         return exists("""
