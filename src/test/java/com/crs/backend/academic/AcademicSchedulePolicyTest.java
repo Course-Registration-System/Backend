@@ -1,8 +1,11 @@
 package com.crs.backend.academic;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.crs.backend.common.BusinessException;
 import com.crs.backend.common.ClockConfig;
+import com.crs.backend.common.ErrorCode;
 import com.crs.backend.common.SettableClock;
 import com.crs.backend.support.IntegrationTest;
 import com.crs.backend.support.SeedFixtures.Semester;
@@ -60,6 +63,24 @@ class AcademicSchedulePolicyTest extends IntegrationTest {
     void 정정이_모두_끝나면_신청_대상_학기가_없다() {
         at("2027-03-09T17:00:00");
         assertThat(policy.registrationSemester()).isEmpty();
+    }
+
+    @Test
+    void 조회_학기를_비우면_신청_대상_학기_없으면_현재_학기다() {
+        at(SeedTime.T0);
+        assertThat(policy.semesterOrDefault(null)).isEqualTo(Semester.Y2026_WINTER);
+
+        at("2027-03-09T17:00:00"); // 정정이 모두 끝남. 시드의 현재 학기는 2026-2
+        assertThat(policy.semesterOrDefault(null)).isEqualTo(Semester.Y2026_SECOND);
+    }
+
+    @Test
+    void 조회_학기를_주면_그_학기이고_없는_학기면_거부한다() {
+        assertThat(policy.semesterOrDefault(Semester.Y2026_SECOND)).isEqualTo(Semester.Y2026_SECOND);
+        assertThatThrownBy(() -> policy.semesterOrDefault(999))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.SEMESTER_NOT_FOUND));
     }
 
     @Test

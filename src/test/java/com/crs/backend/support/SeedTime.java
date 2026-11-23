@@ -24,10 +24,10 @@ public final class SeedTime {
     /** 2027-1 정정 기간. {@link #atT2(DataSource)} 필요. */
     public static final String T2 = "2027-03-04T11:00:00";
 
-    /** 성적 마감: 2026-2 확정, 진급·졸업·복학, 신입생 계정, 2027-1 최대학점. */
+    /** 성적 마감: 2026-2·2026 겨울 확정, 진급·졸업·복학, 신입생 계정, 2027-1 최대학점. */
     public static final String S1 = "s1_grade_close";
 
-    /** 신청일까지: 겨울학기 성적 확정, 장바구니, 4·3학년 수강신청. */
+    /** 신청일까지: 장바구니, 4·3학년 수강신청. */
     public static final String S2 = "s2_enroll_day";
 
     /** 정정 기간까지: 2·1학년 수강신청, 현재학기 2027-1로 전환. */

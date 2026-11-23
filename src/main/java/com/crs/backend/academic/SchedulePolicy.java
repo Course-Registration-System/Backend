@@ -16,6 +16,12 @@ public interface SchedulePolicy {
      */
     Optional<Integer> registrationSemester();
 
+    /**
+     * 조회 화면의 학기(D24). semNo 를 주면 그 학기이고 없는 학기면 SEMESTER_NOT_FOUND 입니다. 비우면 신청 대상 학기, 신청 대상 학기가 없으면(정정까지
+     * 끝남) 현재 학기입니다.
+     */
+    int semesterOrDefault(Integer semNo);
+
     /** 지금이 그 학기의 장바구니 기간인지. */
     boolean cartOpen(int semNo);
 

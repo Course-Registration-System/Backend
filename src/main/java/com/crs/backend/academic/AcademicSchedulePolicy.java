@@ -1,5 +1,7 @@
 package com.crs.backend.academic;
 
+import com.crs.backend.common.BusinessException;
+import com.crs.backend.common.ErrorCode;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -19,16 +21,32 @@ public class AcademicSchedulePolicy implements SchedulePolicy {
     static final int SEASONAL_ON_LEAVE_MAX_CREDIT = 3;
 
     private final AcademicScheduleRepository repository;
+    private final SemesterRepository semesterRepository;
     private final Clock clock;
 
-    public AcademicSchedulePolicy(AcademicScheduleRepository repository, Clock clock) {
+    public AcademicSchedulePolicy(
+            AcademicScheduleRepository repository, SemesterRepository semesterRepository, Clock clock) {
         this.repository = repository;
+        this.semesterRepository = semesterRepository;
         this.clock = clock;
     }
 
     @Override
     public Optional<Integer> registrationSemester() {
         return repository.findRegistrationSemester(now());
+    }
+
+    @Override
+    public int semesterOrDefault(Integer semNo) {
+        if (semNo != null) {
+            if (semesterRepository.findById(semNo).isEmpty()) {
+                throw new BusinessException(ErrorCode.SEMESTER_NOT_FOUND);
+            }
+            return semNo;
+        }
+        return registrationSemester()
+                .or(repository::findCurrentSemester)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SEMESTER_NOT_FOUND));
     }
 
     @Override

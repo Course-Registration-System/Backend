@@ -1,0 +1,16 @@
+package com.crs.backend.lecture.dto;
+
+import com.crs.backend.lecture.LecStat;
+import java.util.List;
+
+/** 담당 강의 한 건. enrlCnt 는 신청상태가 '신청'인 수강 인원, lecStat 은 OPEN(개설)·CLOSED(폐강)입니다. timeSlots 는
+ * 강의 검색(REG-01)과 같은 모양입니다. */
+public record TeachingLectureItem(
+        int lecNo,
+        String crsCd,
+        String crsNm,
+        int sectNo,
+        int cap,
+        int enrlCnt,
+        LecStat lecStat,
+        List<LectureSearchSlot> timeSlots) {}

@@ -1,0 +1,127 @@
+package com.crs.backend.academic;
+
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.crs.backend.common.SettableClock;
+import com.crs.backend.common.auth.JwtProvider;
+import com.crs.backend.common.auth.Role;
+import com.crs.backend.support.Bearer;
+import com.crs.backend.support.IntegrationTest;
+import com.crs.backend.support.SeedFixtures.Account;
+import com.crs.backend.support.SeedFixtures.Lecture;
+import com.crs.backend.support.SeedFixtures.Semester;
+import com.crs.backend.support.SeedFixtures.Student;
+import com.crs.backend.support.TestClock;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.annotation.Transactional;
+
+/** 2027-1(11) 시드 기준: 개설 41개(폐강 CLOSED 제외), NO_ROOM 대면 미배정, NO_WEIGHTS 반영비율 미입력. */
+@AutoConfigureMockMvc
+@Transactional
+class DashboardControllerTest extends IntegrationTest {
+
+    @Autowired
+    MockMvc mvc;
+
+    @Autowired
+    JwtProvider jwtProvider;
+
+    @Autowired
+    JdbcTemplate jdbc;
+
+    @Autowired
+    SettableClock clock;
+
+    /** 2027-1 채플(P/F). 시드를 다시 만들면 번호가 바뀌어서 이수구분으로 찾는다 */
+    int chapel;
+
+    @BeforeEach
+    void setUp() {
+        chapel = jdbc.queryForObject("""
+                SELECT l.lec_no FROM lecture l JOIN course c ON c.crs_cd = l.crs_cd
+                 WHERE l.sem_no = ? AND c.cmpl_type = 'CHAPEL'
+                """, Integer.class, Semester.Y2027_FIRST);
+    }
+
+    @AfterEach
+    void tearDown() {
+        TestClock.reset(clock);
+    }
+
+    private ResultActions dashboard(String query) throws Exception {
+        return mvc.perform(get("/api/admin/dashboard" + query)
+                .header("Authorization", Bearer.of(jwtProvider, Account.ADMIN, Role.ADMIN)));
+    }
+
+    @Test
+    void 개설_강의_수와_미배정_강의_수는_폐강을_빼고_센다() throws Exception {
+        // 미배정은 NO_ROOM 하나. 온라인 강의는 강의실이 없어도 미배정이 아니다
+        dashboard("?semNo=11")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.semNo").value(11))
+                .andExpect(jsonPath("$.openLectureCount").value(41))
+                .andExpect(jsonPath("$.unassignedLectureCount").value(1));
+    }
+
+    @Test
+    void 미배정_칸을_채우면_미배정_강의에서_빠진다() throws Exception {
+        jdbc.update("""
+                UPDATE lecture_time_slot SET room_cd = (SELECT room_cd FROM classroom ORDER BY room_cd LIMIT 1)
+                 WHERE lec_no = ? AND cls_type = 'OFFLINE' AND room_cd IS NULL
+                """, Lecture.NO_ROOM);
+        dashboard("?semNo=11").andExpect(jsonPath("$.unassignedLectureCount").value(0));
+    }
+
+    @Test
+    void 정원_마감_강의는_신청인원이_정원에_다다른_개설_강의다() throws Exception {
+        // T0 에는 정원이 찬 강의가 없다. ONE_SEAT_LEFT 와 폐강 강의를 채우면 ONE_SEAT_LEFT 만 나온다
+        jdbc.update("UPDATE lecture SET enrl_cnt = cap WHERE lec_no IN (?, ?)", Lecture.ONE_SEAT_LEFT, Lecture.CLOSED);
+        dashboard("?semNo=11")
+                .andExpect(jsonPath("$.fullLectures.length()").value(1))
+                .andExpect(jsonPath("$.fullLectures[0].lecNo").value(Lecture.ONE_SEAT_LEFT));
+    }
+
+    @Test
+    void 미제출_강의는_계획서가_없거나_등급제인데_반영비율이_없는_강의다() throws Exception {
+        // 시드: NO_WEIGHTS 포함 3개가 반영비율 없음. P/F 인 채플은 반영비율이 없어도 제출로 본다
+        jdbc.update("UPDATE lecture SET plan_file = NULL WHERE lec_no = ?", Lecture.ONE_SEAT_LEFT);
+        dashboard("?semNo=11")
+                .andExpect(jsonPath("$.missingPlanLectures.length()").value(4))
+                .andExpect(jsonPath("$.missingPlanLectures[?(@.lecNo == " + Lecture.NO_WEIGHTS + ")].noWeights")
+                        .value(true))
+                .andExpect(jsonPath("$.missingPlanLectures[?(@.lecNo == " + Lecture.NO_WEIGHTS + ")].profEmail")
+                        .isNotEmpty())
+                .andExpect(jsonPath("$.missingPlanLectures[?(@.lecNo == " + Lecture.ONE_SEAT_LEFT + ")].noPlanFile")
+                        .value(true))
+                .andExpect(jsonPath("$.missingPlanLectures[?(@.lecNo == " + Lecture.ONE_SEAT_LEFT + ")].noWeights")
+                        .value(false))
+                .andExpect(jsonPath("$.missingPlanLectures[*].lecNo", not(hasItem(chapel))));
+    }
+
+    @Test
+    void 학기를_비우면_신청_대상_학기_없으면_현재_학기() throws Exception {
+        TestClock.at(clock, TestClock.CART); // 현재 학기는 2026-2
+        dashboard("").andExpect(jsonPath("$.semNo").value(Semester.Y2027_FIRST));
+        TestClock.at(clock, "2027-03-09T17:00:00"); // 2027-1 정정이 끝난 순간
+        dashboard("").andExpect(jsonPath("$.semNo").value(Semester.Y2026_SECOND));
+    }
+
+    @Test
+    void 관리자가_아니면_거부하고_없는_학기는_404() throws Exception {
+        mvc.perform(get("/api/admin/dashboard?semNo=11")
+                        .header("Authorization", Bearer.of(jwtProvider, Student.DEMO, Role.STUDENT)))
+                .andExpect(status().isForbidden());
+        dashboard("?semNo=999").andExpect(status().isNotFound());
+    }
+}
