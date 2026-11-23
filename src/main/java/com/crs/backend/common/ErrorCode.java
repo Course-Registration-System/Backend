@@ -63,7 +63,15 @@ public enum ErrorCode {
     INVALID_CHAPEL_COURSE(HttpStatus.CONFLICT, "채플은 0.5학점, P/F 과목이어야 합니다."),
     PREREQUISITE_SELF(HttpStatus.CONFLICT, "자기 자신을 선수과목으로 지정할 수 없습니다."),
     PREREQUISITE_CYCLE(HttpStatus.CONFLICT, "선수과목이 순환합니다."),
-    COURSE_IN_USE(HttpStatus.CONFLICT, "개설된 강의가 있는 과목은 과목명과 권장학년만 바꿀 수 있습니다.");
+    COURSE_IN_USE(HttpStatus.CONFLICT, "개설된 강의가 있는 과목은 과목명과 권장학년만 바꿀 수 있습니다."),
+
+    // 강의계획서 (LEC-03). 강의가 없거나 폐강일 때는 위의 LECTURE_NOT_FOUND·LECTURE_CLOSED 를 같이 씁니다
+    PLAN_PERIOD_CLOSED(HttpStatus.CONFLICT, "장바구니 기간이 시작돼 강의계획서를 바꿀 수 없습니다."),
+    INVALID_PLAN_FILE(HttpStatus.BAD_REQUEST, "PDF 파일만 올릴 수 있습니다."),
+    PLAN_FILE_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "강의계획서 파일은 10MB 까지 올릴 수 있습니다."),
+    WEIGHT_SUM_INVALID(HttpStatus.BAD_REQUEST, "평가 반영 비율의 합은 100이어야 합니다."),
+    WEIGHTS_NOT_ALLOWED(HttpStatus.CONFLICT, "P/F 과목은 평가 반영 비율을 입력하지 않습니다."),
+    PLAN_NOT_FOUND(HttpStatus.NOT_FOUND, "강의계획서가 없습니다.");
 
     private final HttpStatus status;
     private final String message;
