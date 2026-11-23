@@ -94,6 +94,12 @@ public class AcademicScheduleRepository {
         return queryTime("SELECT MAX(end_dtm) FROM academic_schedule WHERE sem_no = ? AND schd_type = 'ADJUST'", semNo);
     }
 
+    public Optional<LocalDateTime> findRegistrationEnd(int semNo) {
+        return queryTime(
+                "SELECT MAX(end_dtm) FROM academic_schedule WHERE sem_no = ? AND schd_type IN ('ENROLL', 'ADJUST')",
+                semNo);
+    }
+
     private Optional<LocalDateTime> queryTime(String sql, int semNo) {
         return Optional.ofNullable(jdbc.queryForObject(sql, LocalDateTime.class, semNo));
     }
