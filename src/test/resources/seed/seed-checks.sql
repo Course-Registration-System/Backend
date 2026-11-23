@@ -44,14 +44,37 @@ SELECT COUNT(*) FROM s a JOIN s b
   ON a.sem_no = b.sem_no AND a.prof_no = b.prof_no AND a.lec_no < b.lec_no
  AND a.dow = b.dow AND a.start_tm < b.end_tm AND b.start_tm < a.end_tm;
 
--- CHECK 최대학점 초과(채플 제외) | 0
+-- CHECK 최대학점 초과(채플 제외). 산정 값이 없으면 정규학기 18, 계절학기는 학적상태 기준(재학 6, 휴학 3) | 0
 SELECT COUNT(*) FROM (
   SELECT e.std_no, l.sem_no, SUM(c.crdt) AS crdt
   FROM enrollment e JOIN lecture l USING (lec_no) JOIN course c USING (crs_cd)
   WHERE e.enrl_stat = 'ENROLLED' AND c.cmpl_type <> 'CHAPEL'
   GROUP BY e.std_no, l.sem_no) x
+JOIN semester s ON s.sem_no = x.sem_no JOIN student st ON st.std_no = x.std_no
 LEFT JOIN semester_maximum_credit m ON m.std_no = x.std_no AND m.sem_no = x.sem_no
-WHERE x.crdt > COALESCE(m.max_crdt, 18);
+WHERE x.crdt > COALESCE(m.max_crdt, CASE WHEN s.sem_type IN ('FIRST', 'SECOND') THEN 18
+                                         WHEN st.std_stat = 'ON_LEAVE' THEN 3 ELSE 6 END);
+
+-- CHECK 최대학점 값이 학기구분과 맞지 않음(정규학기 18·21, 계절학기 6·3) | 0
+SELECT COUNT(*) FROM semester_maximum_credit m JOIN semester s USING (sem_no)
+WHERE (s.sem_type IN ('FIRST', 'SECOND')) <> (m.max_crdt IN (18, 21));
+
+-- CHECK 폐강 강의에 남은 신청·장바구니 | 0
+SELECT
+  (SELECT COUNT(*) FROM enrollment e JOIN lecture l USING (lec_no) WHERE l.lec_stat = 'CLOSED' AND e.enrl_stat = 'ENROLLED')
++ (SELECT COUNT(*) FROM course_cart c JOIN lecture l USING (lec_no) WHERE l.lec_stat = 'CLOSED');
+
+-- CHECK 수강생이 같은 강의의 조교 | 0
+SELECT COUNT(*) FROM teaching_assistant_assignment t
+JOIN enrollment e ON e.std_no = t.std_no AND e.lec_no = t.lec_no AND e.enrl_stat = 'ENROLLED';
+
+-- CHECK 선수과목 순환 | 0
+WITH RECURSIVE path AS (
+  SELECT crs_cd AS start_cd, prereq_crs_cd AS cur_cd, 1 AS depth FROM prerequisite_course
+  UNION ALL
+  SELECT p.start_cd, q.prereq_crs_cd, p.depth + 1 FROM path p JOIN prerequisite_course q ON q.crs_cd = p.cur_cd
+  WHERE p.depth < 50 AND p.cur_cd <> p.start_cd)
+SELECT COUNT(DISTINCT start_cd) FROM path WHERE cur_cd = start_cd;
 
 -- CHECK 같은 학기 같은 과목 중복 신청 | 0
 SELECT COUNT(*) FROM (
@@ -130,6 +153,17 @@ WHERE g.tot_scr IS NOT NULL AND g.ltr_grd IS NOT NULL
                         WHEN g.tot_scr >= 77 THEN 'C+' WHEN g.tot_scr >= 74 THEN 'C0' WHEN g.tot_scr >= 70 THEN 'C-'
                         WHEN g.tot_scr >= 67 THEN 'D+' WHEN g.tot_scr >= 64 THEN 'D0' WHEN g.tot_scr >= 60 THEN 'D-'
                         ELSE 'F' END;
+
+-- CHECK 총점 = 항목 점수 × 반영 비율 합 / 100 (소수점 버림) | 0
+SELECT COUNT(*) FROM grade g JOIN lecture l USING (lec_no)
+WHERE g.tot_scr IS NOT NULL
+  AND (l.mid_wt IS NULL OR g.mid_scr IS NULL OR g.fin_scr IS NULL OR g.hw_scr IS NULL OR g.att_scr IS NULL
+       OR g.tot_scr <> FLOOR((g.mid_scr * l.mid_wt + g.fin_scr * l.fin_wt + g.hw_scr * l.hw_wt + g.att_scr * l.att_wt) / 100));
+
+-- CHECK 평가방식과 등급이 맞지 않음(P/F 과목은 P·F만, 등급제 과목에는 P 없음) | 0
+SELECT COUNT(*) FROM grade g JOIN lecture l USING (lec_no) JOIN course c USING (crs_cd)
+WHERE (c.eval_type = 'PASS_FAIL' AND g.ltr_grd NOT IN ('P', 'F'))
+   OR (c.eval_type = 'GRADE' AND g.ltr_grd = 'P');
 
 -- CHECK 역할과 하위 테이블 불일치 | 0
 SELECT COUNT(*) FROM user_account u
