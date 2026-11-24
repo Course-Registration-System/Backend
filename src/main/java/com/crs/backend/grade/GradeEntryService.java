@@ -29,7 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 성적 입력·수정(GRD-01). 교수와 권한 있는 조교는 성적 입력 기간에 원점수만 저장하고, 제출할 때 시스템이 원점수 총점 → 상대점수 → 등급을
- * 계산합니다. 등급을 사람이 넣거나 고치는 길은 없습니다. 성적표 조회는 기간과 관계없습니다.
+ * 계산합니다. 원점수 총점은 tot_scr, 최종점수는 fnl_scr 에 둡니다. 등급을 사람이 넣거나 고치는 길은 없습니다. 성적표 조회는 기간과 관계없습니다.
  *
  * <ul>
  *   <li>P/F: 상대점수 = 원점수 총점, 90 이상이면 P
@@ -71,8 +71,8 @@ public class GradeEntryService {
     }
 
     /**
-     * 원점수 저장. 넣은 학생만 바뀌며, 한 명이라도 실패하면 아무것도 저장하지 않습니다. 저장하면 순위가 바뀔 수 있으므로 강의 전체의
-     * 상대점수·등급을 비우고 입력중으로 둡니다.
+     * 원점수 저장. 넣은 학생만 바뀌며(원점수와 원점수 총점), 한 명이라도 실패하면 아무것도 저장하지 않습니다. 저장하면 순위가 바뀔 수
+     * 있으므로 강의 전체의 최종점수·등급을 비우고 입력중으로 둡니다.
      */
     @Transactional
     public GradeSheetResponse save(CurrentUser user, int lecNo, GradeSaveRequest request) {
@@ -97,7 +97,13 @@ public class GradeEntryService {
         }
         for (GradeInput input : request.grades()) {
             gradeEntryRepository.saveRawScores(
-                    lecNo, input.stdNo(), input.midScr(), input.finScr(), input.hwScr(), input.attScr());
+                    lecNo,
+                    input.stdNo(),
+                    input.midScr(),
+                    input.finScr(),
+                    input.hwScr(),
+                    input.attScr(),
+                    rawTotal(lecture, input.midScr(), input.finScr(), input.hwScr(), input.attScr()));
         }
 
         gradeEntryRepository.clearResults(lecNo);
@@ -123,7 +129,8 @@ public class GradeEntryService {
                 throw new BusinessException(ErrorCode.GRADE_INCOMPLETE);
             }
             for (Result result : grade(lecture, students)) {
-                gradeEntryRepository.saveResult(lecNo, result.stdNo(), result.totScr(), result.ltrGrd());
+                gradeEntryRepository.saveResult(
+                        lecNo, result.stdNo(), result.totScr(), result.fnlScr(), result.ltrGrd());
             }
         }
 
@@ -131,8 +138,8 @@ public class GradeEntryService {
         return reload(lecNo);
     }
 
-    /** 제출할 때 계산한 학생 한 명의 상대점수·등급. */
-    private record Result(String stdNo, int totScr, String ltrGrd) {}
+    /** 제출할 때 계산한 학생 한 명의 원점수 총점·최종점수·등급. */
+    private record Result(String stdNo, int totScr, int fnlScr, String ltrGrd) {}
 
     /** 원점수 총점과 함께 다루는 학생. */
     private record Ranked(StudentRow student, int rawTotal) {}
@@ -160,7 +167,7 @@ public class GradeEntryService {
             String grade = mode == EvalMode.PASS_FAIL
                     ? (relative >= PASS_SCORE ? "P" : "F")
                     : LetterGrade.fromScore(relative, r.student().retake()).code();
-            results.add(new Result(r.student().stdNo(), relative, grade));
+            results.add(new Result(r.student().stdNo(), r.rawTotal(), relative, grade));
         }
         return results;
     }
@@ -231,14 +238,17 @@ public class GradeEntryService {
      * 없다(double 이면 89.999… 처럼 경계에서 등급이 바뀔 수 있음). 네 항목 중 하나라도 없거나 비율이 없으면 null.
      */
     private static Integer rawTotal(LectureRow lecture, StudentRow s) {
-        if (!entered(s) || lecture.midWt() == null) {
+        return rawTotal(lecture, s.midScr(), s.finScr(), s.hwScr(), s.attScr());
+    }
+
+    private static Integer rawTotal(LectureRow lecture, BigDecimal mid, BigDecimal fin, BigDecimal hw, BigDecimal att) {
+        if (mid == null || fin == null || hw == null || att == null || lecture.midWt() == null) {
             return null;
         }
-        BigDecimal weighted = s.midScr()
-                .multiply(BigDecimal.valueOf(lecture.midWt()))
-                .add(s.finScr().multiply(BigDecimal.valueOf(lecture.finWt())))
-                .add(s.hwScr().multiply(BigDecimal.valueOf(lecture.hwWt())))
-                .add(s.attScr().multiply(BigDecimal.valueOf(lecture.attWt())));
+        BigDecimal weighted = mid.multiply(BigDecimal.valueOf(lecture.midWt()))
+                .add(fin.multiply(BigDecimal.valueOf(lecture.finWt())))
+                .add(hw.multiply(BigDecimal.valueOf(lecture.hwWt())))
+                .add(att.multiply(BigDecimal.valueOf(lecture.attWt())));
         return weighted.divide(HUNDRED, 0, RoundingMode.FLOOR).intValueExact();
     }
 
@@ -290,7 +300,7 @@ public class GradeEntryService {
                         display(s.hwScr()),
                         display(s.attScr()),
                         rawTotal(lecture, s),
-                        s.totScr(),
+                        s.fnlScr(),
                         s.ltrGrd(),
                         mode == EvalMode.PASS_FAIL
                                 ? null

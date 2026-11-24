@@ -38,7 +38,10 @@ public class GradeEntryRepository {
             Integer attWt,
             GrdStat grdStat) {}
 
-    /** 수강생 한 명과 저장된 성적. 항목 점수는 소수 셋째 자리까지(DECIMAL(6,3)), 총점은 정수입니다. 성적 행이 없으면 점수·등급이 모두 null 입니다. */
+    /**
+     * 수강생 한 명과 저장된 성적. 항목 원점수는 소수 셋째 자리까지(DECIMAL(6,3)), totScr 는 원점수 총점, fnlScr 는 제출 때 계산한 최종점수입니다.
+     * 성적 행이 없으면 점수·등급이 모두 null 입니다.
+     */
     public record StudentRow(
             String stdNo,
             String usrNm,
@@ -48,6 +51,7 @@ public class GradeEntryRepository {
             BigDecimal hwScr,
             BigDecimal attScr,
             Integer totScr,
+            Integer fnlScr,
             String ltrGrd) {}
 
     private static final String LECTURE_SELECT = """
@@ -84,6 +88,7 @@ public class GradeEntryRepository {
             rs.getBigDecimal("hw_scr"),
             rs.getBigDecimal("att_scr"),
             nullableInt(rs, "tot_scr"),
+            nullableInt(rs, "fnl_scr"),
             rs.getString("ltr_grd"));
 
     private final NamedParameterJdbcTemplate jdbc;
@@ -110,7 +115,7 @@ public class GradeEntryRepository {
     public List<StudentRow> findStudents(int lecNo) {
         return jdbc.query("""
                 SELECT e.std_no, u.usr_nm, e.retake_yn,
-                       g.mid_scr, g.fin_scr, g.hw_scr, g.att_scr, g.tot_scr, g.ltr_grd
+                       g.mid_scr, g.fin_scr, g.hw_scr, g.att_scr, g.tot_scr, g.fnl_scr, g.ltr_grd
                   FROM enrollment e
                   JOIN user_account u ON u.usr_no = e.std_no
                   LEFT JOIN grade g ON g.std_no = e.std_no AND g.lec_no = e.lec_no
@@ -120,36 +125,51 @@ public class GradeEntryRepository {
                 """, params(lecNo), STUDENT);
     }
 
-    /** 학생 한 명의 원점수를 저장합니다. 행이 없으면 만들고(수강신청은 성적 행을 만들지 않음) 있으면 원점수 네 개를 바꿉니다. */
+    /**
+     * 학생 한 명의 원점수와 원점수 총점을 저장합니다. 행이 없으면 만들고(수강신청은 성적 행을 만들지 않음) 있으면 바꿉니다. 총점은 네 항목이
+     * 다 있을 때만 있고 아니면 null 입니다.
+     */
     public void saveRawScores(
-            int lecNo, String stdNo, BigDecimal midScr, BigDecimal finScr, BigDecimal hwScr, BigDecimal attScr) {
+            int lecNo,
+            String stdNo,
+            BigDecimal midScr,
+            BigDecimal finScr,
+            BigDecimal hwScr,
+            BigDecimal attScr,
+            Integer totScr) {
         jdbc.update(
                 """
-                INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr)
-                VALUES (:stdNo, :lecNo, :midScr, :finScr, :hwScr, :attScr) AS new
+                INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr)
+                VALUES (:stdNo, :lecNo, :midScr, :finScr, :hwScr, :attScr, :totScr) AS new
                 ON DUPLICATE KEY UPDATE
-                    mid_scr = new.mid_scr, fin_scr = new.fin_scr, hw_scr = new.hw_scr, att_scr = new.att_scr
+                    mid_scr = new.mid_scr, fin_scr = new.fin_scr, hw_scr = new.hw_scr, att_scr = new.att_scr,
+                    tot_scr = new.tot_scr
                 """,
                 params(lecNo)
                         .addValue("stdNo", stdNo)
                         .addValue("midScr", midScr)
                         .addValue("finScr", finScr)
                         .addValue("hwScr", hwScr)
-                        .addValue("attScr", attScr));
+                        .addValue("attScr", attScr)
+                        .addValue("totScr", totScr));
     }
 
-    /** 강의 전체의 상대점수·등급을 비웁니다. 원점수가 하나라도 바뀌면 순위가 바뀔 수 있어서입니다. */
+    /** 강의 전체의 최종점수·등급을 비웁니다. 원점수가 하나라도 바뀌면 순위가 바뀔 수 있어서입니다(원점수 총점은 그대로). */
     public void clearResults(int lecNo) {
-        jdbc.update("UPDATE grade SET tot_scr = NULL, ltr_grd = NULL WHERE lec_no = :lecNo", params(lecNo));
+        jdbc.update("UPDATE grade SET fnl_scr = NULL, ltr_grd = NULL WHERE lec_no = :lecNo", params(lecNo));
     }
 
-    /** 제출할 때 계산한 학생 한 명의 상대점수·등급을 저장합니다. */
-    public void saveResult(int lecNo, String stdNo, int totScr, String ltrGrd) {
+    /** 제출할 때 계산한 학생 한 명의 원점수 총점·최종점수·등급을 저장합니다. */
+    public void saveResult(int lecNo, String stdNo, int totScr, int fnlScr, String ltrGrd) {
         jdbc.update(
-                "UPDATE grade SET tot_scr = :totScr, ltr_grd = :ltrGrd WHERE lec_no = :lecNo AND std_no = :stdNo",
+                """
+                UPDATE grade SET tot_scr = :totScr, fnl_scr = :fnlScr, ltr_grd = :ltrGrd
+                 WHERE lec_no = :lecNo AND std_no = :stdNo
+                """,
                 params(lecNo)
                         .addValue("stdNo", stdNo)
                         .addValue("totScr", totScr)
+                        .addValue("fnlScr", fnlScr)
                         .addValue("ltrGrd", ltrGrd));
     }
 
