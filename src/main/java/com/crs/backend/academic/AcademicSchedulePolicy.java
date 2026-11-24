@@ -2,6 +2,7 @@ package com.crs.backend.academic;
 
 import com.crs.backend.common.BusinessException;
 import com.crs.backend.common.ErrorCode;
+import com.crs.backend.user.UserNo;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -64,8 +65,11 @@ public class AcademicSchedulePolicy implements SchedulePolicy {
         return repository.findMaxCredit(stdNo, semNo).orElseGet(() -> defaultMaxCredit(stdNo, semNo));
     }
 
-    // 산정 결과가 없는 학생(산정 후 등록·복학 등): 정규학기 18, 계절학기는 학적상태로 정한다(ACA-01)
+    // 산정 결과가 없는 학생(산정 후 등록·복학 등): 정규학기 18, 계절학기는 학적상태로 정한다(ACA-01). 대학원생은 산정 대상이 아니라 0
     private int defaultMaxCredit(String stdNo, int semNo) {
+        if (UserNo.isGraduate(stdNo)) {
+            return 0;
+        }
         if (!repository.isSeasonal(semNo)) {
             return REGULAR_DEFAULT_MAX_CREDIT;
         }

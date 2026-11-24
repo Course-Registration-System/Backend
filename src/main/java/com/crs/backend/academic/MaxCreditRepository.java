@@ -123,7 +123,7 @@ public class MaxCreditRepository {
     }
 
     /**
-     * 학년 = min(4, 다닌 정규학기 수 ÷ 2 버림 + 1). 재학·휴학생 전원을 이력에서 다시 계산합니다(D25). 관리자가 USR-02 로 고친 학년도 이때
+     * 학년 = min(4, 다닌 정규학기 수 ÷ 2 버림 + 1). 재학·휴학 중인 학부생 전원을 이력에서 다시 계산합니다(D25). 관리자가 USR-02 로 고친 학년도 이때
      * 이력 기준으로 다시 바뀝니다.
      */
     public void recalculateYearLevels(int targetOrd) {
@@ -160,7 +160,7 @@ public class MaxCreditRepository {
     }
 
     /**
-     * 정규학기 최대학점. 재학생 전원, 마지막으로 다닌 정규학기 평점(2학년 1학기는 1학년 두 학기 평균)이 4.0 이상이면 21, 아니면 18(성적·평점
+     * 정규학기 최대학점. 재학 중인 학부생 전원, 마지막으로 다닌 정규학기 평점(2학년 1학기는 1학년 두 학기 평균)이 4.0 이상이면 21, 아니면 18(성적·평점
      * 없음 포함, D3). 평점은 나누지 않고 학점×평점 합 ≥ 4.0×학점 합으로 비교해 반올림 오차를 없앱니다(D4). 계절학기 성적은 보지 않습니다.
      */
     public void insertRegular(int semNo, int targetOrd) {
@@ -177,7 +177,7 @@ public class MaxCreditRepository {
                 new MapSqlParameterSource("semNo", semNo).addValue("targetOrd", targetOrd));
     }
 
-    /** 계절학기 최대학점. 재학생 6, 휴학생 3. */
+    /** 계절학기 최대학점. 학부생 중 재학생 6, 휴학생 3. */
     public void insertSeasonal(int semNo) {
         jdbc.update("""
                 INSERT INTO semester_maximum_credit (std_no, sem_no, max_crdt)

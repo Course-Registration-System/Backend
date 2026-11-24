@@ -139,6 +139,18 @@ class AcademicSchedulePolicyTest extends IntegrationTest {
     }
 
     @Test
+    void 시연의_성적_입력은_T0_성적_확정은_TC_에서_된다() {
+        // docs/seed-data.md 시연 흐름 ①·②. 확정(GRD-02)은 성적 입력 기간이 끝난 뒤에만 된다
+        at(SeedTime.T0);
+        assertThat(policy.gradeOpen(Semester.Y2026_SECOND)).isTrue();
+
+        at(SeedTime.TC);
+        assertThat(policy.gradeOpen(Semester.Y2026_SECOND)).isFalse();
+        assertThat(policy.gradeEnd(Semester.Y2026_SECOND))
+                .hasValueSatisfying(end -> assertThat(end).isBeforeOrEqualTo(LocalDateTime.parse(SeedTime.TC)));
+    }
+
+    @Test
     void 일정이_없는_학기는_기한이_비어_있다() {
         addSemester(99, "FIRST");
         assertThat(policy.cartStart(99)).isEmpty();
