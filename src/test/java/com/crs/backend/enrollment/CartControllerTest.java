@@ -96,6 +96,10 @@ class CartControllerTest extends IntegrationTest {
         add(Student.GRADUATE_ASSISTANT, Lecture.ONE_SEAT_LEFT)
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("GRADUATE_STUDENT_NOT_ALLOWED"));
+        // 최대학점 산정 대상이 아니므로 담을 수 있는 학점도 0으로 보인다
+        mvc.perform(get("/api/cart").header(HttpHeaders.AUTHORIZATION, student(Student.GRADUATE_ASSISTANT)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.maxCredit").value(0));
     }
 
     @Test

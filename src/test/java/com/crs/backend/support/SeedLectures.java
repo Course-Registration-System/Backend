@@ -11,12 +11,13 @@ public final class SeedLectures {
 
     private SeedLectures() {}
 
-    /** 재학생 중 주어진 과목을 한 번도 신청한 적 없는 학생. 재수강·같은 과목 검사에 걸리지 않게 할 때 씁니다. */
+    /** 재학 중인 학부생 중 주어진 과목을 한 번도 신청한 적 없는 학생. 재수강·같은 과목 검사에 걸리지 않게 할 때 씁니다. */
     public static String studentNeverTook(JdbcTemplate jdbc, String... crsCds) {
         String in = String.join(",", Collections.nCopies(crsCds.length, "?"));
         return jdbc.queryForObject("""
                 SELECT s.std_no FROM student s
                  WHERE s.std_stat = 'ATTENDING'
+                   AND CHAR_LENGTH(s.std_no) <> 10
                    AND NOT EXISTS (SELECT 1 FROM enrollment e JOIN lecture l ON l.lec_no = e.lec_no
                                     WHERE e.std_no = s.std_no AND l.crs_cd IN (%s))
                  ORDER BY s.std_no
