@@ -548,6 +548,68 @@ class GradeEntryControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.code").value("GRADE_NOT_RELATIVE"));
     }
 
+    @Test
+    void 등급_인원은_조교도_정하고_다른_교수는_403() throws Exception {
+        jdbc.update(
+                "INSERT INTO teaching_assistant_assignment (lec_no, std_no) VALUES (?, ?)",
+                Lecture.DEMO_GRADE,
+                Student.ON_LEAVE);
+
+        counts(Student.ON_LEAVE, Role.STUDENT, Lecture.DEMO_GRADE, "{\"aCnt\":3}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bands.aCnt").value(3));
+        counts(otherProfessor(Lecture.DEMO_GRADE), Role.PROFESSOR, Lecture.DEMO_GRADE, "{\"aCnt\":2}")
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void 확정되거나_폐강된_강의는_등급_인원을_정할_수_없다() throws Exception {
+        jdbc.update(
+                "UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = ?, cnfm_dtm = '2026-12-21 09:00:00'"
+                        + " WHERE lec_no = ?",
+                Account.ADMIN,
+                Lecture.DEMO_GRADE);
+        counts(Lecture.DEMO_GRADE, "{\"aCnt\":2}")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("GRADE_CONFIRMED"));
+
+        jdbc.update(
+                "UPDATE lecture SET grd_stat = 'ENTERING', cnfm_emp_no = NULL, cnfm_dtm = NULL, lec_stat = 'CLOSED',"
+                        + " enrl_cnt = 0 WHERE lec_no = ?",
+                Lecture.DEMO_GRADE);
+        counts(Lecture.DEMO_GRADE, "{\"aCnt\":2}")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("LECTURE_CLOSED"));
+    }
+
+    // ── 상대평가: 군이 한 명이거나 군 안 원점수가 모두 같음 ──
+
+    @Test
+    void 군이_한_명이면_버림_총점을_군_구간_안으로_맞춘다() throws Exception {
+        // A 인원 1명: A군은 1위 혼자. 98 은 구간(90~100) 안이라 그대로, 85 는 90 으로 올림
+        List<String> ranked = setTotals(Lecture.DEMO_GRADE, TOTALS);
+        counts(Lecture.DEMO_GRADE, "{\"aCnt\":1}").andExpect(status().isOk());
+        assertThat(result(ranked.get(0))).containsExactly(98, 98, "A+");
+
+        ranked = setTotals(Lecture.DEMO_GRADE, new int[] {85, 84, 83, 82, 81, 80, 79, 78, 77, 76, 75, 74});
+        submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE).andExpect(status().isOk());
+        assertThat(result(ranked.get(0))).containsExactly(85, 90, "A-");
+        assertThat(result(ranked.get(1))).containsExactly(84, 89, "B+"); // B군(First 84·Last 77) 1등
+    }
+
+    @Test
+    void 군_안의_원점수가_모두_같으면_버림_총점을_군_구간_안으로_맞춘다() throws Exception {
+        // B군(5~9위)이 모두 83: First = Last 라 환산식 대신 83 을 80~89 안으로(그대로 83)
+        List<String> ranked = setTotals(Lecture.DEMO_GRADE, new int[] {98, 95, 92, 88, 83, 83, 83, 83, 83, 77, 74, 58});
+
+        submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE).andExpect(status().isOk());
+
+        for (int i = 4; i <= 8; i++) {
+            assertThat(result(ranked.get(i))).containsExactly(83, 83, "B-");
+        }
+        assertThat(result(ranked.get(3))).containsExactly(88, 90, "A-");
+    }
+
     // ── 절대평가·P/F ──
 
     @Test
@@ -747,8 +809,12 @@ class GradeEntryControllerTest extends IntegrationTest {
     }
 
     private ResultActions counts(int lecNo, String body) throws Exception {
+        return counts(Account.DEMO_PROFESSOR, Role.PROFESSOR, lecNo, body);
+    }
+
+    private ResultActions counts(String usrNo, Role role, int lecNo, String body) throws Exception {
         return mvc.perform(put(path(lecNo) + "/counts")
-                .header(HttpHeaders.AUTHORIZATION, Bearer.of(jwtProvider, Account.DEMO_PROFESSOR, Role.PROFESSOR))
+                .header(HttpHeaders.AUTHORIZATION, Bearer.of(jwtProvider, usrNo, role))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body));
     }
