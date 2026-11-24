@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -38,9 +39,10 @@ import org.springframework.test.web.servlet.result.JsonPathResultMatchers;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 성적 입력·수정(GRD-01). 교수·조교는 원점수만 저장하고, 제출할 때 원점수 총점(tot_scr) → 최종점수(fnl_scr) → 등급을 계산한다. 시드 기준
- * 시각 T0(2026-12-21)은 2026-2 성적 입력 기간이다. DEMO_GRADE(데이터리터러시, 교수 DEMO_PROFESSOR)는 입력중, 수강생 12명(상대평가: A구간
- * 4명, B구간 9위까지), 반영 비율 30/40/20/10 이고 Student.DEMO 만 원점수가 비어 있다.
+ * 성적 입력·수정(GRD-01). 교수·조교는 등급제 과목은 원점수, P/F 과목은 P·F 만 저장한다. 등급제는 저장할 때마다(제출 때도) 원점수 총점
+ * (tot_scr) → 최종점수(fnl_scr) → 등급을 다시 계산한다. 시드 기준 시각 T0(2026-12-21)은 2026-2 성적 입력 기간이다. DEMO_GRADE(데이터리터러시,
+ * 교수 DEMO_PROFESSOR)는 입력중, 수강생 12명(상대평가 한도: A 4명, A+B 9명), 반영 비율 30/40/20/10 이고 Student.DEMO 만 원점수가 비어
+ * 있다.
  *
  * <p>학번·순위에 기대지 않도록, 제출 테스트는 학생들의 원점수 총점을 테스트에서 직접 정한다({@link #setTotals}).
  */
@@ -52,8 +54,8 @@ class GradeEntryControllerTest extends IntegrationTest {
     private static final String BLANK = Student.DEMO;
 
     /**
-     * 12명에게 줄 원점수 총점(높은 순). 경계(4·5위, 9·10위)에 동점이 없다. 기대 결과: A구간 98 A+·95 A0·92 A-·88→90 A-, B구간 87 B+·84
-     * B0·82 B-·79→80 B-·78→80 B-, C·D·F구간 77 C+·74 C0·58 F.
+     * 12명에게 줄 원점수 총점(높은 순). 경계(4·5위, 9·10위)에 동점이 없다. 기대 결과(군 안 환산): A군 98→100 A+·95→97 A+·92→94 A0·88→90
+     * A-, B군 87→89 B+·84→86 B0·82→84 B0·79→81 B-·78→80 B-, 그 외 77 C+·74 C0·58 F.
      */
     private static final int[] TOTALS = {98, 95, 92, 88, 87, 84, 82, 79, 78, 77, 74, 58};
 
@@ -94,6 +96,7 @@ class GradeEntryControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.bands.enrolled").value(12))
                 .andExpect(jsonPath("$.bands.aLimit").value(4))
                 .andExpect(jsonPath("$.bands.abLimit").value(9))
+                .andExpect(jsonPath("$.bands.aCnt").value(nullValue()))
                 .andExpect(jsonPath("$.students", hasSize(12)))
                 .andExpect(jsonPath("$.students[0].stdNo").value(first))
                 .andExpect(student(first, "totScr").value(contains(firstTotal)))
@@ -145,13 +148,13 @@ class GradeEntryControllerTest extends IntegrationTest {
     }
 
     @Test
-    void 평가_방식_교직은_A구간만_전공_영어강의와_제외_강의와_9명_이하는_절대평가() throws Exception {
+    void 평가_방식_교직은_A_50퍼센트_AB_수강인원_전공_영어강의와_제외_강의와_9명_이하는_절대평가() throws Exception {
         String crsCd = crsCdOf(Lecture.DEMO_GRADE);
         jdbc.update("UPDATE course SET cmpl_type = 'TEACHING' WHERE crs_cd = ?", crsCd);
         sheet(Account.DEMO_PROFESSOR, Role.PROFESSOR, Lecture.DEMO_GRADE)
                 .andExpect(jsonPath("$.evalMode").value("RELATIVE"))
                 .andExpect(jsonPath("$.bands.aLimit").value(6))
-                .andExpect(jsonPath("$.bands.abLimit").value(nullValue()));
+                .andExpect(jsonPath("$.bands.abLimit").value(12));
 
         jdbc.update("UPDATE course SET cmpl_type = 'MAJOR_REQ' WHERE crs_cd = ?", crsCd);
         jdbc.update("UPDATE lecture SET eng_lec_yn = 'Y' WHERE lec_no = ?", Lecture.DEMO_GRADE);
@@ -179,15 +182,15 @@ class GradeEntryControllerTest extends IntegrationTest {
     // ── 원점수 저장 ──
 
     @Test
-    void 원점수를_저장하면_원점수_총점을_저장하고_강의_전체의_최종점수와_등급을_비운다() throws Exception {
+    void 원점수를_저장하면_원점수_총점을_저장하고_강의_전체의_최종점수와_등급을_다시_계산한다() throws Exception {
         // (90×30 + 92×40 + 95×20 + 100×10) / 100 = 92.8 → 92
         save(Account.DEMO_PROFESSOR, Role.PROFESSOR, Lecture.DEMO_GRADE, scores(BLANK, 90, 92, 95, 100))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.grdStat").value("ENTERING"))
                 .andExpect(student(BLANK, "totScr").value(contains(92)))
                 .andExpect(student(BLANK, "entered").value(contains(true)))
-                .andExpect(jsonPath("$.students[*].fnlScr", everyItem(nullValue())))
-                .andExpect(jsonPath("$.students[*].ltrGrd", everyItem(nullValue())));
+                .andExpect(jsonPath("$.students[*].fnlScr", everyItem(notNullValue())))
+                .andExpect(jsonPath("$.students[*].ltrGrd", everyItem(notNullValue())));
 
         assertThat(jdbc.queryForObject(
                         "SELECT tot_scr FROM grade WHERE lec_no = ? AND std_no = ?",
@@ -216,12 +219,19 @@ class GradeEntryControllerTest extends IntegrationTest {
     }
 
     @Test
-    void 일부_항목만_저장하면_원점수_총점은_비어_있다() throws Exception {
+    void 일부_항목만_저장하면_원점수_총점과_최종점수는_비어_있고_나머지_학생만_계산한다() throws Exception {
+        String other = enrolledStudents(Lecture.DEMO_GRADE).stream()
+                .filter(s -> !s.equals(BLANK))
+                .findFirst()
+                .orElseThrow();
+
         save(Account.DEMO_PROFESSOR, Role.PROFESSOR, Lecture.DEMO_GRADE, scores(BLANK, 90, null, null, null))
                 .andExpect(status().isOk())
                 .andExpect(student(BLANK, "midScr").value(contains(90)))
                 .andExpect(student(BLANK, "totScr").value(contains(nullValue())))
-                .andExpect(student(BLANK, "entered").value(contains(false)));
+                .andExpect(student(BLANK, "fnlScr").value(contains(nullValue())))
+                .andExpect(student(BLANK, "entered").value(contains(false)))
+                .andExpect(student(other, "fnlScr").value(contains(notNullValue())));
     }
 
     @Test
@@ -247,15 +257,24 @@ class GradeEntryControllerTest extends IntegrationTest {
     }
 
     @Test
-    void 제출된_강의를_고치면_결과를_비우고_입력중으로_돌아간다() throws Exception {
-        setTotals(Lecture.DEMO_GRADE, TOTALS);
+    void 제출된_강의를_고치면_입력중으로_돌아가고_새_석차로_다시_계산한다() throws Exception {
+        List<String> ranked = setTotals(Lecture.DEMO_GRADE, TOTALS);
         submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE)
                 .andExpect(jsonPath("$.grdStat").value("SUBMITTED"));
 
-        save(Account.DEMO_PROFESSOR, Role.PROFESSOR, Lecture.DEMO_GRADE, scores(BLANK, 93, 93, 93, 93))
-                .andExpect(jsonPath("$.grdStat").value("ENTERING"))
-                .andExpect(jsonPath("$.students[*].fnlScr", everyItem(nullValue())))
-                .andExpect(jsonPath("$.students[*].ltrGrd", everyItem(nullValue())));
+        // 꼴찌(58)를 99 로 고치면 1등이 된다. A군 99·98·95·92(First 99·Last 92): 100 − (99 − x) × 10/7
+        save(Account.DEMO_PROFESSOR, Role.PROFESSOR, Lecture.DEMO_GRADE, scores(ranked.get(11), 99, 99, 99, 99))
+                .andExpect(jsonPath("$.grdStat").value("ENTERING"));
+        assertThat(result(ranked.get(11))).containsExactly(99, 100, "A+");
+        assertThat(result(ranked.get(0))).containsExactly(98, 99, "A+");
+        assertThat(result(ranked.get(3))).containsExactly(88, 89, "B+"); // A군에서 밀려나 B군 1등
+    }
+
+    @Test
+    void 등급제_과목에_등급을_넣으면_400() throws Exception {
+        save(body(BLANK, "\"midScr\":90,\"finScr\":90,\"hwScr\":90,\"attScr\":90,\"ltrGrd\":\"P\""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
     }
 
     @Test
@@ -303,6 +322,7 @@ class GradeEntryControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.code").value("GRADE_PERIOD_CLOSED"));
         submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE)
                 .andExpect(jsonPath("$.code").value("GRADE_PERIOD_CLOSED"));
+        counts(Lecture.DEMO_GRADE, "{\"aCnt\":2}").andExpect(jsonPath("$.code").value("GRADE_PERIOD_CLOSED"));
     }
 
     @Test
@@ -342,23 +362,26 @@ class GradeEntryControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.code").value("LECTURE_CLOSED"));
     }
 
-    // ── 제출: 상대평가 ──
+    // ── 상대평가: 군 안 환산 ──
 
     @Test
-    void 상대평가는_순위로_구간을_나눠_최종점수와_등급을_정하고_원점수_총점은_그대로_둔다() throws Exception {
+    void 상대평가는_석차로_군을_나눠_군_안에서_최종점수를_환산하고_원점수_총점은_그대로_둔다() throws Exception {
         List<String> ranked = setTotals(Lecture.DEMO_GRADE, TOTALS);
 
         submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.grdStat").value("SUBMITTED"));
 
-        // [원점수 총점, 최종점수, 등급]
-        assertThat(result(ranked.get(0))).containsExactly(98, 98, "A+");
-        assertThat(result(ranked.get(1))).containsExactly(95, 95, "A0");
-        assertThat(result(ranked.get(3))).containsExactly(88, 90, "A-"); // A구간: 90 으로 올림
-        assertThat(result(ranked.get(4))).containsExactly(87, 87, "B+");
-        assertThat(result(ranked.get(7))).containsExactly(79, 80, "B-"); // B구간: 80 으로 올림
+        // [원점수 총점, 최종점수, 등급]. A군 First 98·Last 88: 100 − (98 − x) × 10/10
+        assertThat(result(ranked.get(0))).containsExactly(98, 100, "A+");
+        assertThat(result(ranked.get(1))).containsExactly(95, 97, "A+");
+        assertThat(result(ranked.get(2))).containsExactly(92, 94, "A0");
+        assertThat(result(ranked.get(3))).containsExactly(88, 90, "A-"); // 군 꼴찌는 구간 바닥
+        // B군 First 87·Last 78: 89 − (87 − x) × 9/9
+        assertThat(result(ranked.get(4))).containsExactly(87, 89, "B+"); // 군 1등은 구간 꼭대기
+        assertThat(result(ranked.get(6))).containsExactly(82, 84, "B0");
         assertThat(result(ranked.get(8))).containsExactly(78, 80, "B-");
+        // 그 외: 버림 총점과 79 중 작은 값
         assertThat(result(ranked.get(9))).containsExactly(77, 77, "C+");
         assertThat(result(ranked.get(11))).containsExactly(58, 58, "F");
         sheet(Account.DEMO_PROFESSOR, Role.PROFESSOR, Lecture.DEMO_GRADE)
@@ -369,65 +392,70 @@ class GradeEntryControllerTest extends IntegrationTest {
     }
 
     @Test
-    void A구간에서_넘치는_높은_점수는_B구간_꼭대기인_89로_내린다() throws Exception {
-        // 상위 6명이 모두 94 이상: 5·6위(A0 점수)는 B구간이라 89(B+)
+    void A군_밖의_높은_점수는_B군_안에서_환산한다() throws Exception {
+        // 상위 6명이 모두 94 이상: 5·6위는 B군(First 95·Last 83)이라 89 − (95 − x) × 9/12
         List<String> ranked = setTotals(Lecture.DEMO_GRADE, new int[] {99, 98, 97, 96, 95, 94, 85, 84, 83, 70, 65, 60});
 
         submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE).andExpect(status().isOk());
 
-        assertThat(result(ranked.get(3))).containsExactly(96, 96, "A0");
+        assertThat(result(ranked.get(2))).containsExactly(97, 93, "A-"); // 100 − 2 × 10/3 = 93.3
         assertThat(result(ranked.get(4))).containsExactly(95, 89, "B+");
-        assertThat(result(ranked.get(5))).containsExactly(94, 89, "B+");
+        assertThat(result(ranked.get(5))).containsExactly(94, 88, "B+"); // 88.25
         assertThat(result(ranked.get(9))).containsExactly(70, 70, "C-");
     }
 
     @Test
-    void 완전_상대평가라_원점수가_낮아도_A구간은_90_B구간은_80으로_올린다() throws Exception {
+    void 원점수가_낮아도_A군은_90_이상_B군은_80_이상이고_반올림은_5에서_올린다() throws Exception {
         List<String> ranked = setTotals(Lecture.DEMO_GRADE, new int[] {61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50});
 
         submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE).andExpect(status().isOk());
 
-        assertThat(result(ranked.get(0))).containsExactly(61, 90, "A-");
+        assertThat(result(ranked.get(0))).containsExactly(61, 100, "A+");
         assertThat(result(ranked.get(3))).containsExactly(58, 90, "A-");
-        assertThat(result(ranked.get(4))).containsExactly(57, 80, "B-");
+        assertThat(result(ranked.get(6))).containsExactly(55, 85, "B0"); // 89 − 2 × 9/4 = 84.5 → 85
         assertThat(result(ranked.get(8))).containsExactly(53, 80, "B-");
         assertThat(result(ranked.get(9))).containsExactly(52, 52, "F");
     }
 
     @Test
-    void 교직_과목은_A구간_50퍼센트_나머지는_89를_넘지_않고_기준표() throws Exception {
+    void 원점수_총점은_소수_그대로_석차와_환산에_쓴다() throws Exception {
+        // 4·5위 원점수 총점 88.5·88.25 는 버리면 88 로 같지만 석차가 갈린다(경계 동점 아님). A군 First 98·Last 88.5
+        List<String> ranked = setTotals(Lecture.DEMO_GRADE, TOTALS);
+        setRaw(Lecture.DEMO_GRADE, ranked.get(3), new BigDecimal("88.5"));
+        setRaw(Lecture.DEMO_GRADE, ranked.get(4), new BigDecimal("88.25"));
+
+        submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE).andExpect(status().isOk());
+
+        assertThat(result(ranked.get(3))).containsExactly(88, 90, "A-");
+        assertThat(result(ranked.get(4))).containsExactly(88, 89, "B+");
+        assertThat(result(ranked.get(1))).containsExactly(95, 97, "A+"); // 100 − 3 × 10/9.5 = 96.84
+    }
+
+    @Test
+    void 교직_과목은_A군_50퍼센트_나머지는_모두_B군() throws Exception {
         jdbc.update("UPDATE course SET cmpl_type = 'TEACHING' WHERE crs_cd = ?", crsCdOf(Lecture.DEMO_GRADE));
         List<String> ranked = setTotals(Lecture.DEMO_GRADE, TOTALS);
 
         submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE).andExpect(status().isOk());
 
-        assertThat(result(ranked.get(5))).containsExactly(84, 90, "A-"); // 6위까지 A구간
-        assertThat(result(ranked.get(6))).containsExactly(82, 82, "B-"); // 그 아래는 기준표
-        assertThat(result(ranked.get(7))).containsExactly(79, 79, "C+");
+        assertThat(result(ranked.get(5))).containsExactly(84, 90, "A-"); // 6위까지 A군
+        assertThat(result(ranked.get(6))).containsExactly(82, 89, "B+"); // A+B 한도가 수강인원이라 그 아래는 B군
+        assertThat(result(ranked.get(11))).containsExactly(58, 80, "B-");
     }
 
     @Test
-    void 교직_과목은_A구간_밖의_높은_점수를_89로_내린다() throws Exception {
-        jdbc.update("UPDATE course SET cmpl_type = 'TEACHING' WHERE crs_cd = ?", crsCdOf(Lecture.DEMO_GRADE));
-        List<String> ranked = setTotals(Lecture.DEMO_GRADE, new int[] {99, 98, 97, 96, 95, 94, 93, 92, 70, 65, 60, 55});
-
-        submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE).andExpect(status().isOk());
-
-        assertThat(result(ranked.get(5))).containsExactly(94, 94, "A0");
-        assertThat(result(ranked.get(6))).containsExactly(93, 89, "B+");
-    }
-
-    @Test
-    void 구간_경계에_총점이_같으면_제출하지_않는다() throws Exception {
+    void 구간_경계에_총점이_같으면_저장은_되지만_제출하지_않는다() throws Exception {
         // A/B 경계(4·5위)가 87 로 같음
         List<String> ranked = setTotals(Lecture.DEMO_GRADE, new int[] {98, 95, 92, 87, 87, 84, 82, 79, 78, 77, 74, 58});
+        save(Account.DEMO_PROFESSOR, Role.PROFESSOR, Lecture.DEMO_GRADE, scores(ranked.get(0), 98, 98, 98, 98))
+                .andExpect(status().isOk());
         submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("GRADE_TIE_AT_BOUNDARY"))
                 .andExpect(jsonPath("$.detail", containsString(ranked.get(3))))
                 .andExpect(jsonPath("$.detail", containsString(ranked.get(4))));
 
-        // B/C·D·F 경계(9·10위)가 77 로 같음
+        // B/그 외 경계(9·10위)가 77 로 같음
         ranked = setTotals(Lecture.DEMO_GRADE, new int[] {98, 95, 92, 88, 87, 84, 82, 79, 77, 77, 74, 58});
         submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE)
                 .andExpect(jsonPath("$.code").value("GRADE_TIE_AT_BOUNDARY"))
@@ -440,12 +468,12 @@ class GradeEntryControllerTest extends IntegrationTest {
 
         submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE).andExpect(status().isOk());
 
-        assertThat(result(ranked.get(1))).containsExactly(92, 92, "A-");
-        assertThat(result(ranked.get(2))).containsExactly(92, 92, "A-");
+        assertThat(result(ranked.get(1))).containsExactly(92, 94, "A0");
+        assertThat(result(ranked.get(2))).containsExactly(92, 94, "A0");
     }
 
     @Test
-    void 재수강생은_A구간이어도_A마이너스가_상한() throws Exception {
+    void 재수강생은_최종점수_93_등급_A마이너스가_상한() throws Exception {
         List<String> ranked = setTotals(Lecture.DEMO_GRADE, TOTALS);
         jdbc.update(
                 "UPDATE enrollment SET retake_yn = 'Y' WHERE lec_no = ? AND std_no = ?",
@@ -454,46 +482,115 @@ class GradeEntryControllerTest extends IntegrationTest {
 
         submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE).andExpect(status().isOk());
 
-        assertThat(result(ranked.get(0))).containsExactly(98, 98, "A-");
+        assertThat(result(ranked.get(0))).containsExactly(98, 93, "A-");
+        assertThat(result(ranked.get(1))).containsExactly(95, 97, "A+"); // 다른 학생의 환산은 그대로
     }
 
-    // ── 제출: 절대평가·P/F ──
+    // ── 상대평가: 등급 인원 ──
 
     @Test
-    void 절대평가는_원점수_총점을_그대로_기준표에_넣는다() throws Exception {
+    void A_인원을_줄이면_밀려난_학생은_B군_안에서_다시_환산한다() throws Exception {
+        List<String> ranked = setTotals(Lecture.DEMO_GRADE, TOTALS);
+        jdbc.update("UPDATE lecture SET grd_stat = 'SUBMITTED' WHERE lec_no = ?", Lecture.DEMO_GRADE);
+
+        counts(Lecture.DEMO_GRADE, "{\"aCnt\":2,\"abCnt\":null}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.grdStat").value("ENTERING"))
+                .andExpect(jsonPath("$.bands.aCnt").value(2))
+                .andExpect(jsonPath("$.bands.abCnt").value(nullValue()))
+                .andExpect(jsonPath("$.bands.aLimit").value(4));
+
+        // A군 98·95, B군 92 ~ 78(First 92·Last 78): 89 − (92 − x) × 9/14
+        assertThat(result(ranked.get(1))).containsExactly(95, 90, "A-");
+        assertThat(result(ranked.get(2))).containsExactly(92, 89, "B+");
+        assertThat(result(ranked.get(3))).containsExactly(88, 86, "B0");
+        assertThat(result(ranked.get(8))).containsExactly(78, 80, "B-");
+        assertThat(jdbc.queryForObject("SELECT a_cnt FROM lecture WHERE lec_no = ?", Integer.class, Lecture.DEMO_GRADE))
+                .isEqualTo(2);
+
+        // 제출도 정한 인원으로 계산한다
+        submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE).andExpect(status().isOk());
+        assertThat(result(ranked.get(2))).containsExactly(92, 89, "B+");
+    }
+
+    @Test
+    void A_인원이_0이면_A가_없다() throws Exception {
+        List<String> ranked = setTotals(Lecture.DEMO_GRADE, TOTALS);
+
+        counts(Lecture.DEMO_GRADE, "{\"aCnt\":0}").andExpect(status().isOk());
+
+        assertThat(result(ranked.get(0))).containsExactly(98, 89, "B+");
+        assertThat(jdbc.queryForObject(
+                        "SELECT COUNT(*) FROM grade WHERE lec_no = ? AND ltr_grd LIKE 'A%'",
+                        Integer.class, Lecture.DEMO_GRADE))
+                .isZero();
+    }
+
+    @Test
+    void 등급_인원이_한도를_넘거나_A가_AB보다_많으면_400() throws Exception {
+        for (String body : List.of("{\"aCnt\":5}", "{\"abCnt\":10}", "{\"aCnt\":3,\"abCnt\":2}", "{\"abCnt\":3}")) {
+            counts(Lecture.DEMO_GRADE, body)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("GRADE_COUNT_OUT_OF_RANGE"));
+        }
+        counts(Lecture.DEMO_GRADE, "{\"aCnt\":-1}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+        counts(Lecture.DEMO_GRADE, "{\"aCnt\":4,\"abCnt\":9}").andExpect(status().isOk()); // 한도 그대로는 된다
+    }
+
+    @Test
+    void 상대평가가_아닌_강의는_등급_인원을_정할_수_없다() throws Exception {
+        jdbc.update("UPDATE lecture SET rel_grd_exmp_yn = 'Y' WHERE lec_no = ?", Lecture.DEMO_GRADE);
+
+        counts(Lecture.DEMO_GRADE, "{\"aCnt\":2}")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("GRADE_NOT_RELATIVE"));
+    }
+
+    // ── 절대평가·P/F ──
+
+    @Test
+    void 절대평가는_원점수_총점을_그대로_기준표에_넣고_재수강은_93_상한() throws Exception {
         jdbc.update("UPDATE lecture SET rel_grd_exmp_yn = 'Y' WHERE lec_no = ?", Lecture.DEMO_GRADE);
         List<String> ranked = setTotals(Lecture.DEMO_GRADE, TOTALS);
+        jdbc.update(
+                "UPDATE enrollment SET retake_yn = 'Y' WHERE lec_no = ? AND std_no = ?",
+                Lecture.DEMO_GRADE,
+                ranked.get(0));
 
         submit(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE).andExpect(status().isOk());
 
+        assertThat(result(ranked.get(0))).containsExactly(98, 93, "A-");
         assertThat(result(ranked.get(3))).containsExactly(88, 88, "B+"); // 올리지 않음
         assertThat(result(ranked.get(7))).containsExactly(79, 79, "C+");
     }
 
     @Test
-    void PF_과목은_반영_비율로_총점을_내고_90_이상이면_P() throws Exception {
+    void PF_과목은_반영_비율_없이_점수_없는_P_F만_입력한다() throws Exception {
         int lecNo = passFailLecture();
         String profNo = professorOf(lecNo);
-        List<String> students = enrolledStudents(lecNo);
+        String stdNo = enrolledStudents(lecNo).get(0);
+        jdbc.update(
+                "UPDATE lecture SET mid_wt = NULL, fin_wt = NULL, hw_wt = NULL, att_wt = NULL WHERE lec_no = ?", lecNo);
 
-        save(profNo, Role.PROFESSOR, lecNo, scores(students.get(0), 95, 95, 95, 95))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("WEIGHTS_NOT_SET"));
-
-        jdbc.update("UPDATE lecture SET mid_wt = 0, fin_wt = 0, hw_wt = 0, att_wt = 100 WHERE lec_no = ?", lecNo);
-        students.forEach(stdNo -> setRaw(lecNo, stdNo, 95));
-        save(profNo, Role.PROFESSOR, lecNo, scores(students.get(0), 0, 0, 0, 89))
-                .andExpect(status().isOk());
-
-        submit(profNo, lecNo)
+        save(profNo, Role.PROFESSOR, lecNo, passFail(stdNo, "F"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.evalMode").value("PASS_FAIL"))
-                .andExpect(student(students.get(0), "ltrGrd").value(contains("F")))
-                .andExpect(student(students.get(0), "grdPt").value(contains(nullValue())));
-        assertThat(result(lecNo, students.get(0))).containsExactly(89, 89, "F");
-        for (String stdNo : students.subList(1, students.size())) {
-            assertThat(result(lecNo, stdNo)).containsExactly(95, 95, "P");
-        }
+                .andExpect(student(stdNo, "ltrGrd").value(contains("F")))
+                .andExpect(student(stdNo, "entered").value(contains(true)))
+                .andExpect(student(stdNo, "grdPt").value(contains(nullValue())));
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT mid_scr, tot_scr, fnl_scr, ltr_grd FROM grade WHERE lec_no = ? AND std_no = ?", lecNo, stdNo);
+        assertThat(row.get("mid_scr")).isNull();
+        assertThat(row.get("tot_scr")).isNull();
+        assertThat(row.get("fnl_scr")).isNull();
+        assertThat(row.get("ltr_grd")).isEqualTo("F");
+
+        save(profNo, Role.PROFESSOR, lecNo, scores(stdNo, 95, 95, 95, 95))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+        save(profNo, Role.PROFESSOR, lecNo, passFail(stdNo, "A+")).andExpect(status().isBadRequest());
     }
 
     @Test
@@ -501,13 +598,17 @@ class GradeEntryControllerTest extends IntegrationTest {
         int lecNo = passFailLecture();
         String profNo = professorOf(lecNo);
         String stdNo = enrolledStudents(lecNo).get(0);
-        jdbc.update("UPDATE lecture SET mid_wt = 0, fin_wt = 0, hw_wt = 0, att_wt = 100 WHERE lec_no = ?", lecNo);
-
-        save(profNo, Role.PROFESSOR, lecNo, scores(stdNo, null, null, null, 95)).andExpect(status().isOk());
+        jdbc.update("UPDATE grade SET ltr_grd = NULL WHERE lec_no = ? AND std_no = ?", lecNo, stdNo);
+        jdbc.update("UPDATE lecture SET grd_stat = 'ENTERING' WHERE lec_no = ?", lecNo);
 
         submit(profNo, lecNo)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("GRADE_INCOMPLETE"));
+
+        save(profNo, Role.PROFESSOR, lecNo, passFail(stdNo, "P")).andExpect(status().isOk());
+        submit(profNo, lecNo)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.grdStat").value("SUBMITTED"));
     }
 
     // ── 제출: 상태 ──
@@ -553,6 +654,10 @@ class GradeEntryControllerTest extends IntegrationTest {
     }
 
     private void setRaw(int lecNo, String stdNo, int score) {
+        setRaw(lecNo, stdNo, BigDecimal.valueOf(score));
+    }
+
+    private void setRaw(int lecNo, String stdNo, BigDecimal score) {
         jdbc.update(
                 "UPDATE grade SET mid_scr = ?, fin_scr = ?, hw_scr = ?, att_scr = ? WHERE lec_no = ? AND std_no = ?",
                 score,
@@ -618,6 +723,10 @@ class GradeEntryControllerTest extends IntegrationTest {
         return "{\"grades\":[" + score(stdNo, mid, fin, hw, att) + "]}";
     }
 
+    private static String passFail(String stdNo, String ltrGrd) {
+        return "{\"grades\":[{\"stdNo\":\"%s\",\"ltrGrd\":\"%s\"}]}".formatted(stdNo, ltrGrd);
+    }
+
     private static String body(String stdNo, String fields) {
         return "{\"grades\":[{\"stdNo\":\"" + stdNo + "\"," + fields + "}]}";
     }
@@ -633,6 +742,13 @@ class GradeEntryControllerTest extends IntegrationTest {
     private ResultActions save(String usrNo, Role role, int lecNo, String body) throws Exception {
         return mvc.perform(put(path(lecNo))
                 .header(HttpHeaders.AUTHORIZATION, Bearer.of(jwtProvider, usrNo, role))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body));
+    }
+
+    private ResultActions counts(int lecNo, String body) throws Exception {
+        return mvc.perform(put(path(lecNo) + "/counts")
+                .header(HttpHeaders.AUTHORIZATION, Bearer.of(jwtProvider, Account.DEMO_PROFESSOR, Role.PROFESSOR))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body));
     }

@@ -163,14 +163,19 @@ WHERE g.tot_scr IS NOT NULL
   AND (l.mid_wt IS NULL OR g.mid_scr IS NULL OR g.fin_scr IS NULL OR g.hw_scr IS NULL OR g.att_scr IS NULL
        OR g.tot_scr <> FLOOR((g.mid_scr * l.mid_wt + g.fin_scr * l.fin_wt + g.hw_scr * l.hw_wt + g.att_scr * l.att_wt) / 100));
 
--- CHECK 절대평가 강의의 최종점수가 총점과 다름(최종점수가 있는 행. 상대평가는 수강인원 10명 이상 등급제, 전공 영어강의·제외 인정 제외) | 0
+-- CHECK 절대평가 강의의 최종점수가 총점과 다름(최종점수가 있는 행, 재수강은 총점과 93 중 작은 값. 상대평가는 수강인원 10명 이상 등급제, 전공 영어강의·제외 인정 제외) | 0
 WITH rel AS (
   SELECT l.lec_no FROM lecture l JOIN course c USING (crs_cd)
   WHERE c.eval_type = 'GRADE' AND l.rel_grd_exmp_yn = 'N'
     AND NOT (l.eng_lec_yn = 'Y' AND c.cmpl_type IN ('MAJOR_BASIC', 'MAJOR_REQ', 'MAJOR_ELEC'))
     AND (SELECT COUNT(*) FROM enrollment e WHERE e.lec_no = l.lec_no AND e.enrl_stat = 'ENROLLED') >= 10)
-SELECT COUNT(*) FROM grade g
-WHERE g.fnl_scr IS NOT NULL AND g.lec_no NOT IN (SELECT lec_no FROM rel) AND (g.tot_scr IS NULL OR g.fnl_scr <> g.tot_scr);
+SELECT COUNT(*) FROM grade g JOIN enrollment e USING (std_no, lec_no)
+WHERE g.fnl_scr IS NOT NULL AND g.lec_no NOT IN (SELECT lec_no FROM rel)
+  AND (g.tot_scr IS NULL OR g.fnl_scr <> IF(e.retake_yn = 'Y', LEAST(g.tot_scr, 93), g.tot_scr));
+
+-- CHECK 재수강 최종점수가 93 초과(GRD-01 재수강은 A- 상한, 최종점수도 93 상한) | 0
+SELECT COUNT(*) FROM grade g JOIN enrollment e USING (std_no, lec_no)
+WHERE e.retake_yn = 'Y' AND g.fnl_scr > 93;
 
 -- CHECK 상대평가 강의에서 원점수 총점이 높은데 최종점수가 낮은 학생 쌍(순서 보존. 재수강 A- 상한으로 깎인 학생은 높은 쪽에서 제외) | 0
 WITH rel AS (

@@ -467,10 +467,11 @@ def score_grade(lec, ab, forced, retake):
         sc = [max(40, min(100, round(rng.gauss(ab, 7)))), max(40, min(100, round(rng.gauss(ab, 7)))),
               max(40, min(100, round(rng.gauss(ab + 5, 5)))), max(60, min(100, round(rng.gauss(97, 3))))]
     tot = math.floor(sum(s * w for s, w in zip(sc, lec["wt"])) / 100)
-    g = grade_of(tot)
+    fnl = min(tot, RETAKE_MAX) if retake == "Y" else tot   # 절대평가: 최종점수 = 총점, 재수강은 93 상한(GRD-01)
+    g = grade_of(fnl)
     if retake == "Y" and better(g, "A-"):
         g = "A-"   # 재수강 상한
-    return dict(mid=sc[0], fin=sc[1], hw=sc[2], att=sc[3], tot=tot, fnl=tot, ltr=g, base=g)   # 절대평가: 최종점수 = 총점
+    return dict(mid=sc[0], fin=sc[1], hw=sc[2], att=sc[3], tot=tot, fnl=fnl, ltr=g, base=g)
 
 
 # ---------------------------------------------------------------- 상대평가(GRD-01)
