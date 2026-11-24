@@ -12,6 +12,8 @@ import jakarta.validation.constraints.Size;
 /**
  * 계정 등록. role 은 STUDENT 또는 PROFESSOR 입니다(관리자 계정은 시드로만 만듭니다).
  *
+ * <p>usrNo 는 숫자만: 학부생 8자리, 대학원생 10자리(조교로만 씀), 교수 6자리({@link com.crs.backend.user.UserNo}).
+ *
  * <p>학생만 쓰는 값: yrLvl(필수), stdStat(비우면 재학). 교수만 쓰는 값: office.
  */
 public record UserCreateRequest(

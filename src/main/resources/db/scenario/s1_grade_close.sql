@@ -14,7 +14,7 @@ INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr, l
   ('20240004', 158, 77, 77, 87, 96, 80, 'B-')
 ON DUPLICATE KEY UPDATE ltr_grd = ltr_grd;
 
-UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = '9001', cnfm_dtm = '2026-12-28 10:00:00' WHERE sem_no = 9 AND grd_stat <> 'CONFIRMED';
+UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = '90001', cnfm_dtm = '2026-12-28 10:00:00' WHERE sem_no = 9 AND grd_stat <> 'CONFIRMED';
 
 INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr, ltr_grd) VALUES
   ('20230003', 183, 81, 77, 80, 100, 81, 'B-'),
@@ -24,7 +24,7 @@ INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr, l
   ('20250002', 185, 84, 90, 91, 92, 87, 'B+')
 ON DUPLICATE KEY UPDATE ltr_grd = ltr_grd;
 
-UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = '9001', cnfm_dtm = '2027-01-16 17:00:00' WHERE sem_no = 10 AND grd_stat <> 'CONFIRMED';
+UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = '90001', cnfm_dtm = '2027-01-16 17:00:00' WHERE sem_no = 10 AND grd_stat <> 'CONFIRMED';
 
 UPDATE student SET yr_lvl = 4, std_stat = 'GRADUATED' WHERE std_no = '20230001';
 

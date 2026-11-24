@@ -120,6 +120,9 @@ class EnrollmentAdminControllerTest extends IntegrationTest {
 
     @Test
     void 정원_말고는_학생_신청과_같은_조건을_지킨다() throws Exception {
+        add(COMPILER, Student.GRADUATE_ASSISTANT)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("GRADUATE_STUDENT_NOT_ALLOWED"));
         String stdNo = SeedLectures.studentNeverTook(jdbc, "1010021", "1030007");
         add(COMPILER, stdNo).andExpect(status().isCreated());
         add(SeedLectures.of(jdbc, "1030007", Semester.Y2027_FIRST, 2), stdNo)

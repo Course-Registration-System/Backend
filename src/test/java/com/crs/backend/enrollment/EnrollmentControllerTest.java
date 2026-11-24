@@ -96,6 +96,13 @@ class EnrollmentControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 대학원생은_신청할_수_없다() throws Exception {
+        enroll(Student.GRADUATE_ASSISTANT, COMPILER)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("GRADUATE_STUDENT_NOT_ALLOWED"));
+    }
+
+    @Test
     void 폐강_강의는_신청할_수_없다() throws Exception {
         enroll(STUDENT, Lecture.CLOSED).andExpect(jsonPath("$.code").value("LECTURE_CLOSED"));
     }

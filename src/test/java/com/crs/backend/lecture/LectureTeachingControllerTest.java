@@ -120,6 +120,14 @@ class LectureTeachingControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 대학원생_조교도_배정된_강의를_본다() throws Exception {
+        as(Student.GRADUATE_ASSISTANT, Role.STUDENT, PATH + "?semNo=" + Semester.Y2027_FIRST)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lectures", hasSize(1)))
+                .andExpect(jsonPath("$.lectures[0].lecNo").value(Lecture.TA_TARGET));
+    }
+
+    @Test
     void 졸업한_조교는_배정된_강의가_보이지_않는다() throws Exception {
         // 졸업생은 로그인과 성적 조회만 할 수 있다(USR-02). 졸업 처리는 학사 모듈 일이라 테스트에서만 직접 바꾼다(롤백됨)
         jdbc.update("UPDATE student SET std_stat = 'GRADUATED' WHERE std_no = ?", Student.TEACHING_ASSISTANT);

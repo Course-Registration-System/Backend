@@ -91,6 +91,27 @@ class UserAccountControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 대학원생은_10자리_학번으로_등록한다() throws Exception {
+        create(NEW_STUDENT.replace("20279999", "2027719999")).andExpect(status().isCreated());
+    }
+
+    @Test
+    void 사용자번호가_역할별_자리수와_다르면_등록할_수_없다() throws Exception {
+        // 학부생 8자리, 대학원생 10자리, 교수 6자리 숫자만(USR-01·02)
+        for (String usrNo : new String[] {"2027999", "202799999", "2027999A"}) {
+            create(NEW_STUDENT.replace("20279999", usrNo))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+        }
+        create("""
+                        {"usrNo": "10999999", "password": "first-pw!", "usrNm": "새교수",
+                         "role": "PROFESSOR", "deptNo": 102}
+                        """)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+    }
+
+    @Test
     void 이미_있는_로그인ID는_등록할_수_없다() throws Exception {
         create(NEW_STUDENT.replace("20279999", Student.DEMO))
                 .andExpect(status().isConflict())

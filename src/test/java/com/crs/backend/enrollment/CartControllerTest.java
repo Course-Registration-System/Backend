@@ -91,6 +91,14 @@ class CartControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 대학원생은_담을_수_없다() throws Exception {
+        // 대학원생(학번 10자리)은 조교로만 쓴다(USR-01)
+        add(Student.GRADUATE_ASSISTANT, Lecture.ONE_SEAT_LEFT)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("GRADUATE_STUDENT_NOT_ALLOWED"));
+    }
+
+    @Test
     void 장바구니_기간이_아니면_담거나_뺄_수_없다() throws Exception {
         TestClock.at(clock, TestClock.ENROLL_3RD_YEAR);
         add(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT)

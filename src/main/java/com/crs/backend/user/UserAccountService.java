@@ -34,6 +34,9 @@ public class UserAccountService {
         if (request.role() == Role.ADMIN) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "관리자 계정은 등록할 수 없습니다.");
         }
+        if (!UserNo.matches(request.usrNo(), request.role())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "사용자번호는 학부생 8자리, 대학원생 10자리, 교수 6자리 숫자입니다.");
+        }
         if (request.role() == Role.STUDENT && request.yrLvl() == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "학생은 학년이 필요합니다.");
         }

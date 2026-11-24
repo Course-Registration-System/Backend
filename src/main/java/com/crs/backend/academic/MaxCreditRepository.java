@@ -4,6 +4,7 @@ import com.crs.backend.academic.dto.MaxCreditItem;
 import com.crs.backend.grade.GradePoint;
 import com.crs.backend.grade.SemesterOrder;
 import com.crs.backend.user.StdStat;
+import com.crs.backend.user.UserNo;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -28,6 +29,9 @@ public class MaxCreditRepository {
 
     /** 학기 순서값. 연도×10 + (1학기 1, 여름 2, 2학기 3, 겨울 4). {@link SemType} 선언 순서와 같습니다. */
     static final String SEM_ORD = SemesterOrder.SQL;
+
+    /** 학부생만. 대학원생(학번 10자리)은 조교로만 쓰므로 학년·졸업·최대학점 대상이 아닙니다(USR-01, V5). */
+    private static final String UNDERGRADUATE = UserNo.undergraduateSql("st.std_no");
 
     // 대상 학기 앞의 확정된 신청 내역. 같은 과목을 여러 번 들었으면 가장 최근 시도가 rn = 1
     private static final String HISTORY = """
@@ -129,7 +133,8 @@ public class MaxCreditRepository {
                   LEFT JOIN (%s) p ON p.std_no = st.std_no
                    SET st.yr_lvl = LEAST(4, FLOOR(COALESCE(p.regular_cnt, 0) / 2) + 1)
                  WHERE st.std_stat IN ('ATTENDING', 'ON_LEAVE')
-                """.formatted(PROGRESS), new MapSqlParameterSource("targetOrd", targetOrd));
+                   AND %s
+                """.formatted(PROGRESS, UNDERGRADUATE), new MapSqlParameterSource("targetOrd", targetOrd));
     }
 
     /**
@@ -145,7 +150,8 @@ public class MaxCreditRepository {
                    AND p.regular_cnt >= 8
                    AND p.earned_crdt >= 130
                    AND p.chapel_cnt >= 6
-                """.formatted(PROGRESS), new MapSqlParameterSource("targetOrd", targetOrd));
+                   AND %s
+                """.formatted(PROGRESS, UNDERGRADUATE), new MapSqlParameterSource("targetOrd", targetOrd));
     }
 
     /** 그 학기 최대학점을 모두 지웁니다. 다시 산정할 때 먼저 지워서, 이번 대상에서 빠진 학생(그사이 휴학·졸업)의 지난 값이 남지 않게 합니다. */
@@ -167,7 +173,8 @@ public class MaxCreditRepository {
                   FROM student st
                   LEFT JOIN (%s) p ON p.std_no = st.std_no
                  WHERE st.std_stat = 'ATTENDING'
-                """.formatted(LAST_REGULAR_GPA),
+                   AND %s
+                """.formatted(LAST_REGULAR_GPA, UNDERGRADUATE),
                 new MapSqlParameterSource("semNo", semNo).addValue("targetOrd", targetOrd));
     }
 
@@ -178,7 +185,8 @@ public class MaxCreditRepository {
                 SELECT st.std_no, :semNo, CASE st.std_stat WHEN 'ATTENDING' THEN 6 ELSE 3 END
                   FROM student st
                  WHERE st.std_stat IN ('ATTENDING', 'ON_LEAVE')
-                """, new MapSqlParameterSource("semNo", semNo));
+                   AND %s
+                """.formatted(UNDERGRADUATE), new MapSqlParameterSource("semNo", semNo));
     }
 
     /** 최대학점별 학생 수. 예: {18=12, 21=3} */

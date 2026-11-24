@@ -33,7 +33,7 @@ rng = random.Random(20261118)
 # 모든 mock 계정의 비밀번호는 test1234! (BCrypt cost 10, Spring BCryptPasswordEncoder와 호환되는 $2a$ 형식)
 PWD_HASH = "$2a$10$mVtkuC8t.ybJShFMmg7dAePnho.f1IpD92TXrTXipF.OhtbWdF/.S"
 SNAPSHOT = datetime(2026, 12, 21, 10, 0)   # T0: 2026-2 성적 입력 기간
-ADMIN = "9001"
+ADMIN = "90001"             # 관리자(정보화팀) 직번 5자리. 사용자번호 형식: 교수 6, 학부생 8, 대학원생 10(V5)
 GRAD_CREDITS = 130          # 졸업 이수 학점
 GRAD_SEMESTERS = 8          # 졸업에 필요한 정규학기 수
 GRAD_CHAPELS = 6            # 졸업에 필요한 채플 P 학기 수(정규·계절 모두 셈)
@@ -276,7 +276,10 @@ STUDENTS = [
 ]
 ST = {s[0]: dict(no=s[0], nm=s[1], dept=s[2], entry=s[3], leave=s[4], load=s[5], ab=s[6]) for s in STUDENTS}
 STILL_ON_LEAVE = {"20230003"}            # 스냅숏 시점에도 휴학 중
-TA = [("20240005", CUR, "1020004"), ("20240005", TARGET, "1020001")]
+# 대학원생(학번 10자리)은 조교로만 쓴다. 장바구니·신청·최대학점·진급 대상이 아니라 STUDENTS(이수 생성)에 넣지 않는다
+GRADS = [("2026710001", "정대원", 101)]   # 학번, 이름, 학과
+GRAD_TA = GRADS[0][0]
+TA = [("20240005", CUR, "1020004"), ("20240005", TARGET, "1020001"), (GRAD_TA, TARGET, "1020001")]
 
 # 강제 수강: {학번: {학기: [(과목, 등급, 재수강여부)]}}. 등급 None이면 성적 없음(2027-1)
 FORCED = {
@@ -837,11 +840,13 @@ def acct(s_):
 accts = [(ADMIN, PWD_HASH, "관리자", "admin@example.ac.kr", "ADMIN", "ACTIVE")]
 accts += [(p, PWD_HASH, nm, f"prof{p}@example.ac.kr", "PROFESSOR", st) for p, nm, _, _, st, _ in PROFS]
 accts += [acct(s_) for s_ in T0_STUDENTS]
+accts += [(g, PWD_HASH, nm, f"{g}@example.ac.kr", "STUDENT", "ACTIVE") for g, nm, _ in GRADS]
 ACOLS = ["usr_no", "pwd", "usr_nm", "email", "role", "acct_stat"]
 sql.append(insert("user_account", ACOLS, accts))
 sql.append(insert("department", ["dept_no", "dept_nm"], DEPTS))
 sql.append(insert("student", ["std_no", "dept_no", "yr_lvl", "std_stat"],
-                  [(s_, ST[s_]["dept"], *yr_stat_t0(s_)) for s_ in T0_STUDENTS]))
+                  [(s_, ST[s_]["dept"], *yr_stat_t0(s_)) for s_ in T0_STUDENTS]
+                  + [(g, d, 1, "ATTENDING") for g, _, d in GRADS]))
 sql.append(insert("professor", ["prof_no", "dept_no", "office"], [(p, d, o) for p, _, d, o, _, _ in PROFS]))
 sql.append(insert("administrator", ["emp_no"], [(ADMIN,)]))
 sql.append(insert("semester", ["sem_no", "yr", "sem_type", "cur_sem_yn"],
@@ -1007,6 +1012,7 @@ java += jclass("Student", "학번.", [
     ("RETAKE", "20240003", "재수강 이력(F → A- 상한). 2027-1 데이터베이스 재수강 신청"),
     ("PREREQ_NOT_MET", "20240004", "자료구조 D+ → 데이터베이스(최소 C0) 신청 불가(T2)"),
     ("TEACHING_ASSISTANT", "20240005", f"조교. 2027-1 {TA_LEC['no']}번 강의"),
+    ("GRADUATE_ASSISTANT", GRAD_TA, f"대학원생 조교(학번 10자리). 2027-1 {TA_LEC['no']}번 강의. 장바구니·신청·최대학점 대상 아님"),
     ("ADMIN_ADDED", "20250001", "2026-2 관리자 수동 추가 1건. 3학년이라 T1 에 신청 불가"),
     ("SOPHOMORE_FULL_IN_CART", "20260001", "정원 마감 강의가 장바구니에 있음(T1)"),
     ("OVER_MAX_CREDIT", OVERMAX[0], "장바구니 강의를 모두 신청하면 최대학점 초과(T1)"),
@@ -1076,7 +1082,9 @@ gd = ["# 시드 데이터 안내", "",
       row("교수", DEMO_PROF, f"성적 입력 시연 {lec_label(DEMO_LEC)}"),
       row("교수(퇴직)", "100006", "비활성 계정 로그인 차단"),
       row("학생", RICH, "시연 학생(성적 입력 → 21학점 신청)"),
-      row("학생 겸 조교", "20240005", f"2027-1 {lec_label(TA_LEC)} 조교"), "",
+      row("학생 겸 조교", "20240005", f"2027-1 {lec_label(TA_LEC)} 조교"),
+      row("대학원생 조교", GRAD_TA, f"2027-1 {lec_label(TA_LEC)} 조교. 장바구니·신청 불가"), "",
+      "사용자번호는 숫자만 쓴다: 관리자(정보화팀) 5자리, 교수 6자리, 학부생 8자리, 대학원생 10자리(V5).", "",
       "## 모듈 A: 학사 기준·조회", "",
       row("기능", "시점", "대상", "확인할 것"), row(*["---"] * 4),
       row("성적 조회(GRD-03)", "T0", "20240001", "2026-2 성적은 제출됐지만 확정 전 → 학생 화면 표시 여부"),

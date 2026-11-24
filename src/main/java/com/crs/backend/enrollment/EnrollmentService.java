@@ -141,7 +141,7 @@ public class EnrollmentService {
     /** 처리 내용 ②~⑨. 학생과 강의를 잠근 뒤 부릅니다. 정원이 찼을 때 학생은 막고, 관리자는 정원을 늘립니다. */
     private void register(String stdNo, StudentState student, int lecNo, LectureInfo lecture, ProcType procType) {
         int semNo = lecture.semNo();
-        StudentStatusRule.check(student.stdStat(), enrollmentRepository.isSeasonal(semNo));
+        StudentStatusRule.check(stdNo, student.stdStat(), enrollmentRepository.isSeasonal(semNo));
         if (lecture.lecStat() == LecStat.CLOSED) {
             throw new BusinessException(ErrorCode.LECTURE_CLOSED);
         }
