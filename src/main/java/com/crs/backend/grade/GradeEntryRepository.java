@@ -120,30 +120,35 @@ public class GradeEntryRepository {
                 """, params(lecNo), STUDENT);
     }
 
-    /** 학생 한 명의 성적을 저장합니다. 행이 없으면 만들고(수강신청은 성적 행을 만들지 않음) 있으면 통째로 바꿉니다. */
-    public void save(
-            int lecNo,
-            String stdNo,
-            BigDecimal midScr,
-            BigDecimal finScr,
-            BigDecimal hwScr,
-            BigDecimal attScr,
-            Integer totScr,
-            String ltrGrd) {
+    /** 학생 한 명의 원점수를 저장합니다. 행이 없으면 만들고(수강신청은 성적 행을 만들지 않음) 있으면 원점수 네 개를 바꿉니다. */
+    public void saveRawScores(
+            int lecNo, String stdNo, BigDecimal midScr, BigDecimal finScr, BigDecimal hwScr, BigDecimal attScr) {
         jdbc.update(
                 """
-                INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr, ltr_grd)
-                VALUES (:stdNo, :lecNo, :midScr, :finScr, :hwScr, :attScr, :totScr, :ltrGrd) AS new
+                INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr)
+                VALUES (:stdNo, :lecNo, :midScr, :finScr, :hwScr, :attScr) AS new
                 ON DUPLICATE KEY UPDATE
-                    mid_scr = new.mid_scr, fin_scr = new.fin_scr, hw_scr = new.hw_scr, att_scr = new.att_scr,
-                    tot_scr = new.tot_scr, ltr_grd = new.ltr_grd
+                    mid_scr = new.mid_scr, fin_scr = new.fin_scr, hw_scr = new.hw_scr, att_scr = new.att_scr
                 """,
                 params(lecNo)
                         .addValue("stdNo", stdNo)
                         .addValue("midScr", midScr)
                         .addValue("finScr", finScr)
                         .addValue("hwScr", hwScr)
-                        .addValue("attScr", attScr)
+                        .addValue("attScr", attScr));
+    }
+
+    /** 강의 전체의 상대점수·등급을 비웁니다. 원점수가 하나라도 바뀌면 순위가 바뀔 수 있어서입니다. */
+    public void clearResults(int lecNo) {
+        jdbc.update("UPDATE grade SET tot_scr = NULL, ltr_grd = NULL WHERE lec_no = :lecNo", params(lecNo));
+    }
+
+    /** 제출할 때 계산한 학생 한 명의 상대점수·등급을 저장합니다. */
+    public void saveResult(int lecNo, String stdNo, int totScr, String ltrGrd) {
+        jdbc.update(
+                "UPDATE grade SET tot_scr = :totScr, ltr_grd = :ltrGrd WHERE lec_no = :lecNo AND std_no = :stdNo",
+                params(lecNo)
+                        .addValue("stdNo", stdNo)
                         .addValue("totScr", totScr)
                         .addValue("ltrGrd", ltrGrd));
     }
