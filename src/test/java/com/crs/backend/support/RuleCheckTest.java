@@ -12,7 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * V3·V5 업무 규칙 CHECK 가 서비스를 거치지 않는 SQL 도 막는지 확인합니다. MySQL CHECK 위반(3819)은 Spring 이 따로 분류하지 않아 제약
+ * V3·V6 업무 규칙 CHECK 가 서비스를 거치지 않는 SQL 도 막는지 확인합니다. MySQL CHECK 위반(3819)은 Spring 이 따로 분류하지 않아 제약
  * 이름으로 봅니다. 허용하는 쪽은 시드 적재와 기존 API 테스트가 지나갑니다.
  */
 @Transactional

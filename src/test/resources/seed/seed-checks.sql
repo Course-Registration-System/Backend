@@ -194,7 +194,7 @@ LEFT JOIN course_cart c ON c.std_no = e.std_no AND c.lec_no = e.lec_no
 WHERE s.yr = 2027 AND s.sem_type = 'FIRST' AND c.std_no IS NULL;
 
 -- CHECK 학년 = min(4, 다닌 정규학기 수 / 2 + 1) | 0
--- 대학원생(학번 10자리)은 조교로만 써서 학년·졸업·최대학점 대상이 아니다(V5)
+-- 대학원생(학번 10자리)은 조교로만 써서 학년·졸업·최대학점 대상이 아니다(V6)
 SELECT COUNT(*) FROM student st
 LEFT JOIN (
   SELECT e.std_no, COUNT(DISTINCT l.sem_no) AS n

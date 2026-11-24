@@ -34,7 +34,7 @@ public class UserAccountService {
         if (request.role() == Role.ADMIN) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "관리자 계정은 등록할 수 없습니다.");
         }
-        // 학부생 8자리, 대학원생 10자리, 교수 6자리(V5). 관리자는 위에서 막았다
+        // 학부생 8자리, 대학원생 10자리, 교수 6자리(V6). 관리자는 위에서 막았다
         if (!request.usrNo().matches(request.role() == Role.PROFESSOR ? "[0-9]{6}" : "[0-9]{8}|[0-9]{10}")) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "사용자번호는 학부생 8자리, 대학원생 10자리, 교수 6자리 숫자입니다.");
         }

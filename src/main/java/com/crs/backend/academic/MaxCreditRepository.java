@@ -29,7 +29,7 @@ public class MaxCreditRepository {
     /** 학기 순서값. 연도×10 + (1학기 1, 여름 2, 2학기 3, 겨울 4). {@link SemType} 선언 순서와 같습니다. */
     static final String SEM_ORD = SemesterOrder.SQL;
 
-    /** 학부생만. 대학원생(학번 10자리)은 조교로만 쓰므로 학년·졸업·최대학점 대상이 아닙니다(USR-01, V5). */
+    /** 학부생만. 대학원생(학번 10자리)은 조교로만 쓰므로 학년·졸업·최대학점 대상이 아닙니다(USR-01, V6). */
     private static final String UNDERGRADUATE = "CHAR_LENGTH(st.std_no) <> 10";
 
     // 대상 학기 앞의 확정된 신청 내역. 같은 과목을 여러 번 들었으면 가장 최근 시도가 rn = 1
