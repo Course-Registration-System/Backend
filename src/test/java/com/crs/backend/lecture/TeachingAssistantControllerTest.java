@@ -33,9 +33,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class TeachingAssistantControllerTest extends IntegrationTest {
 
-    /** 시드: Lecture.DEMO_GRADE 의 수강생이 아닌 재학생(컴퓨터학부 2학년) */
-    private static final String FREE_STUDENT = Student.PASS_FAIL_ONLY;
-    /** 시드: Lecture.DEMO_GRADE 의 수강생 */
+    /** 테스트마다 넣는 대학원생(학번 10자리, 컴퓨터학부). 어느 강의에도 배정되지 않았다. 시드의 대학원생은 조교로 이미 배정돼 있어 따로 둔다 */
+    private static final String FREE_GRADUATE = "2026710002";
+    /** 시드: 학부생(학번 8자리). Lecture.DEMO_GRADE 의 수강생이 아니다 */
+    private static final String UNDERGRADUATE = Student.PASS_FAIL_ONLY;
+    /** 시드: Lecture.DEMO_GRADE 의 수강생(학부생) */
     private static final String ENROLLED_STUDENT = Student.DEMO;
 
     @Autowired
@@ -49,19 +51,20 @@ class TeachingAssistantControllerTest extends IntegrationTest {
 
     /** Lecture.TA_TARGET 과 Lecture.CLOSED 의 담당 교수 */
     String taLectureProfessor;
-    /** Lecture.DEMO_GRADE 의 다른 수강생 */
-    String otherEnrolledStudent;
 
     @BeforeEach
     void setUp() {
         taLectureProfessor =
                 jdbc.queryForObject("SELECT prof_no FROM lecture WHERE lec_no = ?", String.class, Lecture.TA_TARGET);
-        otherEnrolledStudent = jdbc.queryForObject(
-                "SELECT std_no FROM enrollment WHERE lec_no = ? AND enrl_stat = 'ENROLLED' AND std_no <> ?"
-                        + " ORDER BY std_no LIMIT 1",
-                String.class,
-                Lecture.DEMO_GRADE,
-                ENROLLED_STUDENT);
+        // 대학원생 계정 등록은 사용자 모듈 일이라 테스트에서만 직접 넣는다(롤백됨)
+        jdbc.update(
+                "INSERT INTO user_account (usr_no, pwd, usr_nm, email, role, acct_stat)"
+                        + " VALUES (?, 'x', '나대원', ?, 'STUDENT', 'ACTIVE')",
+                FREE_GRADUATE,
+                FREE_GRADUATE + "@example.ac.kr");
+        jdbc.update(
+                "INSERT INTO student (std_no, dept_no, yr_lvl, std_stat) VALUES (?, 101, 1, 'ATTENDING')",
+                FREE_GRADUATE);
     }
 
     // ── 목록 ──
@@ -71,16 +74,12 @@ class TeachingAssistantControllerTest extends IntegrationTest {
         professor(taLectureProfessor, get(path(Lecture.TA_TARGET)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lecNo").value(Lecture.TA_TARGET))
-                // 학번 순. 학부생 조교와 대학원생 조교(학번 10자리)
-                .andExpect(jsonPath("$.assistants", hasSize(2)))
+                .andExpect(jsonPath("$.assistants", hasSize(1)))
                 .andExpect(jsonPath("$.assistants[0].stdNo").value(Student.TEACHING_ASSISTANT))
-                .andExpect(jsonPath("$.assistants[0].usrNm").value("장수아"))
-                .andExpect(jsonPath("$.assistants[0].deptNm").value("경영학부"))
-                .andExpect(jsonPath("$.assistants[0].yrLvl").value(3))
-                .andExpect(jsonPath("$.assistants[0].email").value("20240005@example.ac.kr"))
-                .andExpect(jsonPath("$.assistants[1].stdNo").value(Student.GRADUATE_ASSISTANT))
-                .andExpect(jsonPath("$.assistants[1].usrNm").value("정대원"))
-                .andExpect(jsonPath("$.assistants[1].deptNm").value("컴퓨터학부"));
+                .andExpect(jsonPath("$.assistants[0].usrNm").value("정대원"))
+                .andExpect(jsonPath("$.assistants[0].deptNm").value("컴퓨터학부"))
+                .andExpect(jsonPath("$.assistants[0].yrLvl").value(1))
+                .andExpect(jsonPath("$.assistants[0].email").value(Student.TEACHING_ASSISTANT + "@example.ac.kr"));
     }
 
     @Test
@@ -103,33 +102,32 @@ class TeachingAssistantControllerTest extends IntegrationTest {
     // ── 추가 ──
 
     @Test
-    void 담당_교수가_조교를_추가하면_바뀐_목록을_준다() throws Exception {
-        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, FREE_STUDENT)
+    void 담당_교수가_대학원생을_조교로_추가하면_바뀐_목록을_준다() throws Exception {
+        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, FREE_GRADUATE)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lecNo").value(Lecture.DEMO_GRADE))
-                .andExpect(jsonPath("$.assistants[*].stdNo", contains(FREE_STUDENT)))
-                .andExpect(jsonPath("$.assistants[0].usrNm").value("오시우"))
+                .andExpect(jsonPath("$.assistants[*].stdNo", contains(FREE_GRADUATE)))
+                .andExpect(jsonPath("$.assistants[0].usrNm").value("나대원"))
                 .andExpect(jsonPath("$.assistants[0].deptNm").value("컴퓨터학부"));
     }
 
     @Test
-    void 그_강의의_수강생은_조교가_될_수_없다() throws Exception {
-        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, ENROLLED_STUDENT)
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("ASSISTANT_IS_ENROLLED"));
+    void 한_대학원생은_여러_강의의_조교가_될_수_있다() throws Exception {
+        // 시드의 대학원생 조교는 2026-2·2027-1 강의에 이미 배정돼 있다
+        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, Student.TEACHING_ASSISTANT)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assistants[*].stdNo", contains(Student.TEACHING_ASSISTANT)));
     }
 
     @Test
-    void 수강을_취소한_학생은_조교가_될_수_있다() throws Exception {
-        jdbc.update(
-                "UPDATE enrollment SET enrl_stat = 'CANCELLED', cncl_dtm = '2026-12-21 10:00:00'"
-                        + " WHERE std_no = ? AND lec_no = ?",
-                otherEnrolledStudent,
-                Lecture.DEMO_GRADE);
-
-        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, otherEnrolledStudent)
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.assistants[*].stdNo", contains(otherEnrolledStudent)));
+    void 학부생은_조교가_될_수_없다() throws Exception {
+        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, UNDERGRADUATE)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ASSISTANT_NOT_GRADUATE"));
+        // 그 강의의 수강생도 학부생이라 같은 이유로 거절된다
+        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, ENROLLED_STUDENT)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ASSISTANT_NOT_GRADUATE"));
     }
 
     @Test
@@ -141,7 +139,7 @@ class TeachingAssistantControllerTest extends IntegrationTest {
 
     @Test
     void 학생이_아니거나_없는_학번은_404() throws Exception {
-        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, "99999999")
+        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, "9999999999")
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
         addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, taLectureProfessor)
@@ -152,37 +150,29 @@ class TeachingAssistantControllerTest extends IntegrationTest {
     @Test
     void 졸업생과_비활성_계정은_조교로_지정할_수_없다() throws Exception {
         // 졸업 처리와 계정 비활성화는 다른 모듈 일이라 테스트에서만 직접 바꾼다
-        jdbc.update("UPDATE student SET std_stat = 'GRADUATED' WHERE std_no = ?", FREE_STUDENT);
-        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, FREE_STUDENT)
+        jdbc.update("UPDATE student SET std_stat = 'GRADUATED' WHERE std_no = ?", FREE_GRADUATE);
+        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, FREE_GRADUATE)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("ASSISTANT_NOT_ELIGIBLE"));
 
-        jdbc.update("UPDATE student SET std_stat = 'ATTENDING' WHERE std_no = ?", FREE_STUDENT);
-        jdbc.update("UPDATE user_account SET acct_stat = 'INACTIVE' WHERE usr_no = ?", FREE_STUDENT);
-        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, FREE_STUDENT)
+        jdbc.update("UPDATE student SET std_stat = 'ATTENDING' WHERE std_no = ?", FREE_GRADUATE);
+        jdbc.update("UPDATE user_account SET acct_stat = 'INACTIVE' WHERE usr_no = ?", FREE_GRADUATE);
+        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, FREE_GRADUATE)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("ASSISTANT_NOT_ELIGIBLE"));
     }
 
     @Test
-    void 휴학생은_조교로_지정할_수_있다() throws Exception {
-        // T0 에 휴학 중인 학생
-        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, Student.ON_LEAVE)
+    void 휴학_중인_대학원생은_조교로_지정할_수_있다() throws Exception {
+        jdbc.update("UPDATE student SET std_stat = 'ON_LEAVE' WHERE std_no = ?", FREE_GRADUATE);
+        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, FREE_GRADUATE)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.assistants[*].stdNo", contains(Student.ON_LEAVE)));
-    }
-
-    @Test
-    void 대학원생은_조교로_지정할_수_있다() throws Exception {
-        // 대학원생(학번 10자리)은 수강신청은 못 하지만 조교는 된다
-        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, Student.GRADUATE_ASSISTANT)
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.assistants[*].stdNo", contains(Student.GRADUATE_ASSISTANT)));
+                .andExpect(jsonPath("$.assistants[*].stdNo", contains(FREE_GRADUATE)));
     }
 
     @Test
     void 폐강_강의에는_조교를_추가할_수_없고_목록은_볼_수_있다() throws Exception {
-        addAs(taLectureProfessor, Lecture.CLOSED, FREE_STUDENT)
+        addAs(taLectureProfessor, Lecture.CLOSED, FREE_GRADUATE)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("LECTURE_CLOSED"));
         professor(taLectureProfessor, get(path(Lecture.CLOSED)))
@@ -192,17 +182,17 @@ class TeachingAssistantControllerTest extends IntegrationTest {
 
     @Test
     void 조교는_조교를_추가할_수_없다() throws Exception {
-        as(Student.TEACHING_ASSISTANT, Role.STUDENT, post(path(Lecture.TA_TARGET)), body(FREE_STUDENT))
+        as(Student.TEACHING_ASSISTANT, Role.STUDENT, post(path(Lecture.TA_TARGET)), body(FREE_GRADUATE))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     void 담당_교수가_아니면_추가와_삭제도_403() throws Exception {
         String assistant = path(Lecture.TA_TARGET) + "/" + Student.TEACHING_ASSISTANT;
-        as(Account.DEMO_PROFESSOR, Role.PROFESSOR, post(path(Lecture.TA_TARGET)), body(FREE_STUDENT))
+        as(Account.DEMO_PROFESSOR, Role.PROFESSOR, post(path(Lecture.TA_TARGET)), body(FREE_GRADUATE))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
-        as(Account.ADMIN, Role.ADMIN, post(path(Lecture.TA_TARGET)), body(FREE_STUDENT))
+        as(Account.ADMIN, Role.ADMIN, post(path(Lecture.TA_TARGET)), body(FREE_GRADUATE))
                 .andExpect(status().isForbidden());
         as(Account.DEMO_PROFESSOR, Role.PROFESSOR, delete(assistant))
                 .andExpect(status().isForbidden())
@@ -211,8 +201,7 @@ class TeachingAssistantControllerTest extends IntegrationTest {
 
         // 거부된 요청은 아무것도 바꾸지 않는다
         professor(taLectureProfessor, get(path(Lecture.TA_TARGET)))
-                .andExpect(jsonPath(
-                        "$.assistants[*].stdNo", contains(Student.TEACHING_ASSISTANT, Student.GRADUATE_ASSISTANT)));
+                .andExpect(jsonPath("$.assistants[*].stdNo", contains(Student.TEACHING_ASSISTANT)));
     }
 
     @Test
@@ -223,7 +212,7 @@ class TeachingAssistantControllerTest extends IntegrationTest {
                 Account.ADMIN,
                 Lecture.TA_TARGET);
 
-        addAs(taLectureProfessor, Lecture.TA_TARGET, FREE_STUDENT)
+        addAs(taLectureProfessor, Lecture.TA_TARGET, FREE_GRADUATE)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("ASSISTANT_LECTURE_FINISHED"));
         professor(taLectureProfessor, delete(path(Lecture.TA_TARGET) + "/" + Student.TEACHING_ASSISTANT))
@@ -231,8 +220,7 @@ class TeachingAssistantControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.code").value("ASSISTANT_LECTURE_FINISHED"));
         professor(taLectureProfessor, get(path(Lecture.TA_TARGET)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath(
-                        "$.assistants[*].stdNo", contains(Student.TEACHING_ASSISTANT, Student.GRADUATE_ASSISTANT)));
+                .andExpect(jsonPath("$.assistants[*].stdNo", contains(Student.TEACHING_ASSISTANT)));
     }
 
     @Test
@@ -240,11 +228,10 @@ class TeachingAssistantControllerTest extends IntegrationTest {
         // 확정 바로 앞 단계인 '제출'까지는 성적을 고칠 수 있어 조교가 할 일이 남아 있다
         jdbc.update("UPDATE lecture SET grd_stat = 'SUBMITTED' WHERE lec_no = ?", Lecture.TA_TARGET);
 
-        addAs(taLectureProfessor, Lecture.TA_TARGET, FREE_STUDENT)
+        addAs(taLectureProfessor, Lecture.TA_TARGET, FREE_GRADUATE)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath(
-                        "$.assistants[*].stdNo",
-                        containsInAnyOrder(FREE_STUDENT, Student.TEACHING_ASSISTANT, Student.GRADUATE_ASSISTANT)));
+                        "$.assistants[*].stdNo", containsInAnyOrder(FREE_GRADUATE, Student.TEACHING_ASSISTANT)));
     }
 
     @Test
@@ -260,7 +247,7 @@ class TeachingAssistantControllerTest extends IntegrationTest {
     void 담당_교수가_조교를_삭제하면_바뀐_목록을_주고_다시_지우면_404() throws Exception {
         professor(taLectureProfessor, delete(path(Lecture.TA_TARGET) + "/" + Student.TEACHING_ASSISTANT))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.assistants[*].stdNo", contains(Student.GRADUATE_ASSISTANT)));
+                .andExpect(jsonPath("$.assistants", hasSize(0)));
         professor(taLectureProfessor, delete(path(Lecture.TA_TARGET) + "/" + Student.TEACHING_ASSISTANT))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ASSISTANT_NOT_FOUND"));

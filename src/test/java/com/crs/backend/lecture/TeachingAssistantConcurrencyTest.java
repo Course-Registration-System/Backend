@@ -30,7 +30,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class TeachingAssistantConcurrencyTest extends IntegrationTest {
 
     private static final int THREADS = 8;
-    private static final String STUDENT = Student.PASS_FAIL_ONLY;
+    private static final String STUDENT = Student.TEACHING_ASSISTANT;
 
     @Autowired
     TeachingAssistantService teachingAssistantService;

@@ -8,7 +8,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * 조교 관리(LEC-04) SQL. teaching_assistant_assignment 만 쓰고, lecture·student·user_account·department·enrollment 는 다른
+ * 조교 관리(LEC-04) SQL. teaching_assistant_assignment 만 쓰고, lecture·student·user_account·department 는 다른
  * 모듈 소관이라 읽기만 합니다.
  */
 @Repository
@@ -53,15 +53,6 @@ public class TeachingAssistantRepository {
                         (rs, rowNum) -> new StudentStatusRow(rs.getString("acct_stat"), rs.getString("std_stat")))
                 .stream()
                 .findFirst();
-    }
-
-    /** stdNo 가 lecNo 강의의 수강생(신청상태 '신청')인지. 취소한 학생은 수강생이 아닙니다. */
-    public boolean isEnrolled(int lecNo, String stdNo) {
-        return Boolean.TRUE.equals(jdbc.queryForObject(
-                "SELECT EXISTS (SELECT 1 FROM enrollment"
-                        + " WHERE lec_no = :lecNo AND std_no = :stdNo AND enrl_stat = 'ENROLLED')",
-                params(lecNo, stdNo),
-                Boolean.class));
     }
 
     public boolean exists(int lecNo, String stdNo) {

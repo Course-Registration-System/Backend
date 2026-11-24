@@ -7,6 +7,7 @@ import com.crs.backend.common.auth.Role;
 import com.crs.backend.lecture.TeachingAssistantRepository.LectureOwnerRow;
 import com.crs.backend.lecture.TeachingAssistantRepository.StudentStatusRow;
 import com.crs.backend.lecture.dto.TeachingAssistantListResponse;
+import com.crs.backend.user.UserNo;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,17 +44,16 @@ public class TeachingAssistantService {
         }
         checkNotConfirmed(lecture);
 
-        // 학생 확인: 활성 계정이고 졸업생이 아니어야 한다(졸업생은 로그인과 성적 조회만, USR-02). 휴학생은 된다
+        // 학생 확인: 대학원생(학번 10자리)이고, 활성 계정이며 졸업생이 아니어야 한다(졸업생은 로그인과 성적 조회만, USR-02). 휴학생은 된다.
+        // 대학원생은 수강신청을 할 수 없어(V6) "그 강의의 수강생은 조교가 될 수 없다"는 규칙도 함께 지켜진다
         StudentStatusRow student = teachingAssistantRepository
                 .findStudentStatus(stdNo)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        if (!UserNo.isGraduate(stdNo)) {
+            throw new BusinessException(ErrorCode.ASSISTANT_NOT_GRADUATE);
+        }
         if (INACTIVE.equals(student.acctStat()) || GRADUATED.equals(student.stdStat())) {
             throw new BusinessException(ErrorCode.ASSISTANT_NOT_ELIGIBLE);
-        }
-
-        // 그 강의의 수강생은 조교가 될 수 없다(자기 성적 처리 금지). 배정 뒤 수강생이 되는 경우는 LectureAccess 가 막는다
-        if (teachingAssistantRepository.isEnrolled(lecNo, stdNo)) {
-            throw new BusinessException(ErrorCode.ASSISTANT_IS_ENROLLED);
         }
 
         // 같은 학생을 한 강의에 두 번 배정할 수 없다
