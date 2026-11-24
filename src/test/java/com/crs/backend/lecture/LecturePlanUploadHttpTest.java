@@ -7,6 +7,7 @@ import com.crs.backend.common.auth.Role;
 import com.crs.backend.support.Bearer;
 import com.crs.backend.support.IntegrationTest;
 import com.crs.backend.support.SeedFixtures.Account;
+import com.crs.backend.support.SeedFixtures.Lecture;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -39,8 +40,8 @@ class LecturePlanUploadHttpTest extends IntegrationTest {
 
     static final String PLAN_DIR = "build/test-plan-files-http";
 
-    /** 시드: 2027-1 컴파일러(교수 100002). T0 에는 장바구니 시작 전이라 올릴 수 있다 */
-    private static final int NEXT_TERM = 197;
+    /** 시드: 2027-1, DEMO_PROFESSOR 담당. T0 에는 장바구니 시작 전이라 올릴 수 있다 */
+    private static final int NEXT_TERM = Lecture.PLAN_EDITABLE;
 
     @LocalServerPort
     int port;

@@ -1043,6 +1043,11 @@ ONLINE_STD = sorted({e["std"] for e in S3_ENR if e["lec"] is ONLINE})
 assert ONLINE_STD and A_NOW + 1 == A_LIMIT and rich_demo["grade"]["ltr"][0] == "A", (ONLINE_STD, A_NOW, A_LIMIT)
 assert sem_gpa(RICH, CUR) == 4.0
 assert len({rich_demo["grade"][k] for k in SCORE_KEYS}) == 1   # 안내의 "항목 N점씩"
+# 강의계획서 수정(LEC-03) 테스트용: 2027-1, 시연 교수 담당, 점수제, 반영비율 있음. 다른 사례로 쓰는 강의는 피한다
+CASE_LECS = {id(l) for l in [ONE_LEFT, FULL, RICH_EXTRA, OVERMAX[1], OVERLAP[1], PREREQ[1], ONLINE, NO_ROOM, CLOSED,
+                             TWO_SECTIONS, ENG_MAJOR, ENG_GENERAL, REL_EXEMPT, RETAKE_LEC, TA_LEC, *NO_WEIGHTS]}
+PLAN_LEC = min((l for l in LECTURES if l["sem"] == TARGET and l["prof"] == DEMO_PROF and l["stat"] == "OPEN"
+                and l["wt"] and COURSES[l["cd"]]["eval"] == "GRADE" and id(l) not in CASE_LECS), key=lambda l: l["no"])
 
 
 # ---------------------------------------------------------------- 테스트 상수
@@ -1110,7 +1115,9 @@ java += jclass("Lecture", "강의번호.", [
     ("NO_WEIGHTS", NO_WEIGHTS[0]["no"], "반영비율 미입력"),
     ("RETAKE_TARGET", RETAKE_LEC["no"], "RETAKE 학생이 재수강 신청한 강의"),
     ("TA_TARGET", TA_LEC["no"], "TEACHING_ASSISTANT 학생이 조교인 강의"),
-    ("TA_CURRENT", TA_CURRENT_LEC["no"], "TEACHING_ASSISTANT 학생이 2026-2 에 조교인 강의")])
+    ("TA_CURRENT", TA_CURRENT_LEC["no"], "TEACHING_ASSISTANT 학생이 2026-2 에 조교인 강의"),
+    ("PLAN_EDITABLE", PLAN_LEC["no"],
+     "2027-1, 시연 교수(DEMO_PROFESSOR) 담당, 점수제, 계획서 경로·반영비율 있음(파일은 없음). T0 에 계획서를 고칠 수 있다")])
 java[-1:] = ["}"]
 OUT_FIXTURES.write_text("\n".join(java) + "\n", encoding="utf-8", newline="\n")
 
