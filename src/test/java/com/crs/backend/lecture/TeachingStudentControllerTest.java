@@ -115,8 +115,7 @@ class TeachingStudentControllerTest extends IntegrationTest {
 
     @Test
     void 배정된_조교도_명단을_본다() throws Exception {
-        as(Student.TEACHING_ASSISTANT, Role.STUDENT, assistantLectureIn(Semester.Y2026_SECOND))
-                .andExpect(status().isOk());
+        as(Student.TEACHING_ASSISTANT, Role.STUDENT, Lecture.TA_CURRENT).andExpect(status().isOk());
     }
 
     @Test
@@ -223,16 +222,6 @@ class TeachingStudentControllerTest extends IntegrationTest {
                 Semester.Y2027_FIRST);
 
         asProfessorOf(lecNo).andExpect(status().isOk());
-    }
-
-    /** 조교(Student.TEACHING_ASSISTANT)가 그 학기에 배정된 강의. 시드를 다시 만들면 번호가 바뀌어서 학기로 찾는다 */
-    private int assistantLectureIn(int semNo) {
-        return jdbc.queryForObject(
-                "SELECT a.lec_no FROM teaching_assistant_assignment a JOIN lecture l ON l.lec_no = a.lec_no"
-                        + " WHERE a.std_no = ? AND l.sem_no = ?",
-                Integer.class,
-                Student.TEACHING_ASSISTANT,
-                semNo);
     }
 
     /** 2027-1 개설 강의 하나. 시드를 다시 만들면 번호가 바뀌어서 학기로 찾는다 */

@@ -37,8 +37,6 @@ class LectureTeachingControllerTest extends IntegrationTest {
     private static final String ONLINE_LECTURE_PROFESSOR = "100005";
     /** 시드: 2027-1 강의실 미배정 강의(225)의 담당 교수 */
     private static final String NO_ROOM_LECTURE_PROFESSOR = "100004";
-    /** 시드: 조교(20240005)가 2026-2 에 배정된 강의 */
-    private static final int TA_CURRENT_LECTURE = 162;
     /** 시드: 데모 교수의 2026-2 강의(1010023, 월·수). 요일 순서 테스트에서 화·목으로 바꿔 쓴다 */
     private static final int TUE_THU_LECTURE = 161;
 
@@ -113,7 +111,7 @@ class LectureTeachingControllerTest extends IntegrationTest {
         as(Student.TEACHING_ASSISTANT, Role.STUDENT, PATH)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lectures", hasSize(1)))
-                .andExpect(jsonPath("$.lectures[0].lecNo").value(TA_CURRENT_LECTURE));
+                .andExpect(jsonPath("$.lectures[0].lecNo").value(Lecture.TA_CURRENT));
         as(Student.TEACHING_ASSISTANT, Role.STUDENT, PATH + "?semNo=" + Semester.Y2027_FIRST)
                 .andExpect(jsonPath("$.lectures", hasSize(1)))
                 .andExpect(jsonPath("$.lectures[0].lecNo").value(Lecture.TA_TARGET));
@@ -135,7 +133,7 @@ class LectureTeachingControllerTest extends IntegrationTest {
         jdbc.update(
                 "INSERT INTO enrollment (std_no, lec_no, enrl_stat, enrl_dtm) VALUES (?, ?, 'ENROLLED', ?)",
                 Student.TEACHING_ASSISTANT,
-                TA_CURRENT_LECTURE,
+                Lecture.TA_CURRENT,
                 "2026-12-21 10:00:00");
 
         as(Student.TEACHING_ASSISTANT, Role.STUDENT, PATH)
