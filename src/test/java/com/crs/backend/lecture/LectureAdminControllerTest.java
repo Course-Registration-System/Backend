@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.crs.backend.common.SettableClock;
 import com.crs.backend.common.auth.JwtProvider;
 import com.crs.backend.common.auth.Role;
 import com.crs.backend.support.Bearer;
@@ -16,6 +17,8 @@ import com.crs.backend.support.SeedFixtures.Account;
 import com.crs.backend.support.SeedFixtures.Lecture;
 import com.crs.backend.support.SeedFixtures.Semester;
 import com.crs.backend.support.SeedLectures;
+import com.crs.backend.support.TestClock;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,11 +52,19 @@ class LectureAdminControllerTest extends IntegrationTest {
     @Autowired
     JdbcTemplate jdbc;
 
+    @Autowired
+    SettableClock clock;
+
     String admin;
 
     @BeforeEach
     void setUp() {
         admin = Bearer.of(jwtProvider, Account.ADMIN, Role.ADMIN);
+    }
+
+    @AfterEach
+    void tearDown() {
+        TestClock.reset(clock);
     }
 
     @Test
@@ -191,6 +202,33 @@ class LectureAdminControllerTest extends IntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body.formatted(", \"roomCd\": \"21301\"")))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void 정정_일정이_없는_학기는_마지막_수강신청일이_끝나면_수정과_폐강을_할_수_없다() throws Exception {
+        jdbc.update("DELETE FROM academic_schedule WHERE sem_no = ? AND schd_type = 'ADJUST'", Semester.Y2027_FIRST);
+        String unassigned = """
+                {"profNo": "100004", "cap": 60, "engLec": false, "relGrdExmp": false,
+                 "timeSlots": [{"dow": "MON", "startTm": "13:30", "endTm": "14:45"},
+                               {"dow": "WED", "startTm": "13:30", "endTm": "14:45"}]}
+                """;
+
+        // 마지막 수강신청일(2/12 17:00 종료) 중에는 미배정 그대로 수정할 수 있다
+        TestClock.at(clock, "2027-02-12T12:00:00");
+        mvc.perform(asAdmin(put("/api/admin/lectures/" + Lecture.NO_ROOM))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(unassigned))
+                .andExpect(status().isOk());
+
+        TestClock.at(clock, "2027-02-12T17:00:00");
+        mvc.perform(asAdmin(put("/api/admin/lectures/" + Lecture.NO_ROOM))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(unassigned))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("UPDATE_PERIOD_OVER"));
+        mvc.perform(asAdmin(patch("/api/admin/lectures/" + Lecture.NO_ROOM + "/close")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CLOSE_PERIOD_OVER"));
     }
 
     @Test

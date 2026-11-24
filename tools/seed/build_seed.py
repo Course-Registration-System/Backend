@@ -8,10 +8,8 @@
 - src/test/java/com/crs/backend/support/SeedFixtures.java   테스트에서 사례를 이름으로 가리키는 상수
 - docs/seed-data.md                                 모듈별 안내(시점, 계정, 사례)
 
-데이터가 나타내는 시점(스냅숏)은 2027-02-10 18:00이다.
-- 현재 학기 2026-2(성적 확정 완료), 신청 대상 학기 2027-1
-- 진급·졸업 처리와 2027-1 최대학점 산정이 끝났다
-- 2027-1 수강신청은 4학년(02-09)·3학년(02-10) 날이 지났고, 2·1학년은 장바구니만 있다
+기본 시드가 나타내는 시점은 T0(2026-12-21 10:00, 2026-2 성적 입력 기간)이다. 뒤 시점(TC 확정, T1 신청일, T2 정정)은
+시연 API 로 시계를 옮기고 오버레이를 넣어 만든다. 시점마다 그 단계의 기간 조건을 지켜야 한다(예: 확정은 성적 입력 기간이 끝난 뒤).
 졸업 판정에 4년치 이력이 필요해서 2023-1부터 만든다.
 졸업 = 다닌 정규학기 8개 이상, 채플을 뺀 이수 학점 130 이상, 채플 P 학기 6개 이상.
 채플은 학기마다 다시 신청한다(재수강이 아니다, retake_yn N). 같은 학기에 두 번은 못 듣고, 계절학기에도 연다.
@@ -33,7 +31,7 @@ rng = random.Random(20261118)
 # 모든 mock 계정의 비밀번호는 test1234! (BCrypt cost 10, Spring BCryptPasswordEncoder와 호환되는 $2a$ 형식)
 PWD_HASH = "$2a$10$mVtkuC8t.ybJShFMmg7dAePnho.f1IpD92TXrTXipF.OhtbWdF/.S"
 SNAPSHOT = datetime(2026, 12, 21, 10, 0)   # T0: 2026-2 성적 입력 기간
-ADMIN = "9001"
+ADMIN = "90001"             # 관리자(정보화팀) 직번 5자리. 사용자번호 형식: 교수 6, 학부생 8, 대학원생 10(V6)
 GRAD_CREDITS = 130          # 졸업 이수 학점
 GRAD_SEMESTERS = 8          # 졸업에 필요한 정규학기 수
 GRAD_CHAPELS = 6            # 졸업에 필요한 채플 P 학기 수(정규·계절 모두 셈)
@@ -276,7 +274,9 @@ STUDENTS = [
 ]
 ST = {s[0]: dict(no=s[0], nm=s[1], dept=s[2], entry=s[3], leave=s[4], load=s[5], ab=s[6]) for s in STUDENTS}
 STILL_ON_LEAVE = {"20230003"}            # 스냅숏 시점에도 휴학 중
-TA = [("20240005", CUR, "1020004"), ("20240005", TARGET, "1020001")]
+# 대학원생(학번 10자리)은 조교로만 쓴다. 장바구니·신청·최대학점·진급 대상이 아니라 STUDENTS(이수 생성)에 넣지 않는다
+GRAD_TA = "2026710001"   # 정대원, 학과 101
+TA = [("20240005", CUR, "1020004"), ("20240005", TARGET, "1020001"), (GRAD_TA, TARGET, "1020001")]
 
 # 강제 수강: {학번: {학기: [(과목, 등급, 재수강여부)]}}. 등급 None이면 성적 없음(2027-1)
 FORCED = {
@@ -762,6 +762,13 @@ T0 = SNAPSHOT
 T1 = datetime(2027, 2, 11, 10, 5)
 T2 = datetime(2027, 3, 4, 11, 0)
 S1_CNFM = datetime(2026, 12, 28, 10, 0)
+# TC 성적 확정 시연 시각. GRD-02 는 성적 입력 기간이 끝난 뒤에만 확정하므로 T0(입력 기간 안)에서는 확정할 수 없다.
+# s1 이 2026-2 를 확정 처리하는 시각과 같게 둔다(2026-2 입력 종료 뒤, 겨울학기 성적입력 전)
+TC = S1_CNFM
+_grade_start, _grade_end = sched_of(CUR, "GRADE")[2:4]
+assert _grade_start <= T0 < _grade_end, "T0 은 2026-2 성적 입력 기간 안이어야 ① 성적 입력을 시연한다"
+assert _grade_end <= TC < min(sched_of(10, "GRADE")[2], sched_of(TARGET, "CART")[2]), \
+    "TC 는 2026-2 성적 입력이 끝난 뒤(② 확정), 겨울학기 성적입력과 2027-1 장바구니 전이어야 한다"
 
 
 def cnfm_dtm(sem):
@@ -837,11 +844,13 @@ def acct(s_):
 accts = [(ADMIN, PWD_HASH, "관리자", "admin@example.ac.kr", "ADMIN", "ACTIVE")]
 accts += [(p, PWD_HASH, nm, f"prof{p}@example.ac.kr", "PROFESSOR", st) for p, nm, _, _, st, _ in PROFS]
 accts += [acct(s_) for s_ in T0_STUDENTS]
+accts.append((GRAD_TA, PWD_HASH, "정대원", f"{GRAD_TA}@example.ac.kr", "STUDENT", "ACTIVE"))
 ACOLS = ["usr_no", "pwd", "usr_nm", "email", "role", "acct_stat"]
 sql.append(insert("user_account", ACOLS, accts))
 sql.append(insert("department", ["dept_no", "dept_nm"], DEPTS))
 sql.append(insert("student", ["std_no", "dept_no", "yr_lvl", "std_stat"],
-                  [(s_, ST[s_]["dept"], *yr_stat_t0(s_)) for s_ in T0_STUDENTS]))
+                  [(s_, ST[s_]["dept"], *yr_stat_t0(s_)) for s_ in T0_STUDENTS]
+                  + [(GRAD_TA, 101, 1, "ATTENDING")]))
 sql.append(insert("professor", ["prof_no", "dept_no", "office"], [(p, d, o) for p, _, d, o, _, _ in PROFS]))
 sql.append(insert("administrator", ["emp_no"], [(ADMIN,)]))
 sql.append(insert("semester", ["sem_no", "yr", "sem_type", "cur_sem_yn"],
@@ -958,6 +967,7 @@ RETAKE_LEC = tl("1010014")
 SUMMER_CHAPEL = find_lec(8, CHAPEL)
 SUMMER_CHAPEL_STD = sorted(e["std"] for e in ENR if e["lec"] is SUMMER_CHAPEL)
 TA_LEC = find_lec(TARGET, "1020001")
+TA_CURRENT_LEC = find_lec(CUR, "1020004")
 DEMO_ROWS = [e for e in ENR if e["lec"] is DEMO_LEC and e["stat"] == "ENROLLED"]
 A_LIMIT = math.floor(len(DEMO_ROWS) * 0.4)
 A_NOW = sum(1 for e in DEMO_ROWS if e["std"] != RICH and e["grade"]["ltr"] in ("A+", "A0", "A-"))
@@ -1007,6 +1017,7 @@ java += jclass("Student", "학번.", [
     ("RETAKE", "20240003", "재수강 이력(F → A- 상한). 2027-1 데이터베이스 재수강 신청"),
     ("PREREQ_NOT_MET", "20240004", "자료구조 D+ → 데이터베이스(최소 C0) 신청 불가(T2)"),
     ("TEACHING_ASSISTANT", "20240005", f"조교. 2027-1 {TA_LEC['no']}번 강의"),
+    ("GRADUATE_ASSISTANT", GRAD_TA, f"대학원생 조교(학번 10자리). 2027-1 {TA_LEC['no']}번 강의. 장바구니·신청·최대학점 대상 아님"),
     ("ADMIN_ADDED", "20250001", "2026-2 관리자 수동 추가 1건. 3학년이라 T1 에 신청 불가"),
     ("SOPHOMORE_FULL_IN_CART", "20260001", "정원 마감 강의가 장바구니에 있음(T1)"),
     ("OVER_MAX_CREDIT", OVERMAX[0], "장바구니 강의를 모두 신청하면 최대학점 초과(T1)"),
@@ -1030,7 +1041,8 @@ java += jclass("Lecture", "강의번호.", [
     ("RELATIVE_EXEMPT", REL_EXEMPT["no"], "상대평가 제외 인정"),
     ("NO_WEIGHTS", NO_WEIGHTS[0]["no"], "반영비율 미입력"),
     ("RETAKE_TARGET", RETAKE_LEC["no"], "RETAKE 학생이 재수강 신청한 강의"),
-    ("TA_TARGET", TA_LEC["no"], "TEACHING_ASSISTANT 학생이 조교인 강의")])
+    ("TA_TARGET", TA_LEC["no"], "TEACHING_ASSISTANT 학생이 조교인 강의"),
+    ("TA_CURRENT", TA_CURRENT_LEC["no"], "TEACHING_ASSISTANT 학생이 2026-2 에 조교인 강의")])
 java[-1:] = ["}"]
 OUT_FIXTURES.write_text("\n".join(java) + "\n", encoding="utf-8", newline="\n")
 
@@ -1048,8 +1060,8 @@ gd = ["# 시드 데이터 안내", "",
       "2026-2 성적을 입력·확정하면 그 성적으로 2027-1 최대학점이 정해지고, 그 학점으로 수강신청이 막히거나 허용된다.", "",
       row("순서", "시각", "누가", "무엇을", "데이터"), row(*["---"] * 5),
       row("① 성적 입력", f"T0 {T0:%Y-%m-%d %H:%M}", f"교수 {DEMO_PROF}", f"{lec_label(DEMO_LEC)}에서 {RICH} 점수 입력(90~93점 → A-) 후 제출", f"A {A_NOW}명 + 1 = 한도 {A_LIMIT}명. A를 더 주면 제출 불가"),
-      row("② 성적 확정", "T0", f"관리자 {ADMIN}", f"미입력 강의 {lec_label(NOTENT)} 확인, 2026-2 확정", "기본 시드"),
-      row("③ 학기 마감", "(T0 → T1)", f"관리자 {ADMIN}", "겨울학기 성적 확정, 진급·졸업·복학, 2027-1 최대학점 산정", "`s1_grade_close` 후 앱 기능으로 다시 산정"),
+      row("② 성적 확정", f"TC {TC:%Y-%m-%d %H:%M}", f"관리자 {ADMIN}", f"시계를 TC로 옮긴 뒤 미입력 강의 {lec_label(NOTENT)} 확인, 2026-2 제출 강의 확정. 확정은 성적 입력 기간({_grade_end:%m-%d %H:%M})이 끝난 뒤에만 되므로 T0 에서는 막힌다", "기본 시드"),
+      row("③ 학기 마감", "(TC → T1)", f"관리자 {ADMIN}", "겨울학기 성적 확정, 진급·졸업·복학, 2027-1 최대학점 산정", "`s1_grade_close` 후 앱 기능으로 다시 산정"),
       row("④ 시계 넘김", f"T1 {T1:%Y-%m-%d %H:%M}", "시연 API", "다른 학생들의 장바구니와 4·3학년 신청을 채움", "`s2_enroll_day`"),
       row("⑤ 수강신청", "T1", f"학생 {RICH}", f"장바구니 {plan_cr(RICH)}학점 + {RICH_EXTRA['no']}번 {crd(RICH_EXTRA)}학점 = 21학점 신청 성공. {FULL['no']}번은 정원 마감으로 차단", "s2 이후"),
       row("⑥ 차단 사례", "T1", "학생 여럿", "아래 모듈 B 표의 T1 사례", "s2 이후"),
@@ -1058,12 +1070,14 @@ gd = ["# 시드 데이터 안내", "",
       "## 시점과 오버레이", "",
       row("시점", "시각", "열린 기간", "적용할 오버레이"), row(*["---"] * 4),
       row("T0", f"{T0:%Y-%m-%d %H:%M}", "2026-2 성적 입력, 2026 겨울 정정", "없음(기본 시드)"),
+      row("TC", f"{TC:%Y-%m-%d %H:%M}", "없음. 2026-2 성적 입력이 끝나 확정 가능", "없음(기본 시드)"),
       row("T1", f"{T1:%Y-%m-%d %H:%M}", "2027-1 2학년 수강신청", "`s1_grade_close`, `s2_enroll_day`"),
       row("T2", f"{T2:%Y-%m-%d %H:%M}", "2027-1 정정(전 학년)", "`s1_grade_close`, `s2_enroll_day`, `s3_adjust`"), "",
       "오버레이는 `src/main/resources/db/scenario/` 에 있고, 앞 단계부터 순서대로 한 번씩 적용한다. 되돌리려면 `docker compose down -v` 후 다시 올린다.", "",
       "### 시점 바꾸기", "",
       "- **시연·로컬(권장)**: 시연 API 로 오버레이를 넣고 시계를 옮긴다. 프로필을 지정하지 않으면 demo 라 바로 쓸 수 있다. 같은 오버레이를 두 번 넣으면 409 로 거절하고 데이터는 그대로다.", "",
       "  ```bash",
+      f"  curl -X PUT 'localhost:8080/api/dev/clock?at={TC:%Y-%m-%dT%H:%M:%S}'   # ② 성적 확정",
       "  curl -X POST localhost:8080/api/dev/scenarios/s1_grade_close",
       "  curl -X POST localhost:8080/api/dev/scenarios/s2_enroll_day",
       f"  curl -X PUT 'localhost:8080/api/dev/clock?at={T1:%Y-%m-%dT%H:%M:%S}'",
@@ -1076,7 +1090,9 @@ gd = ["# 시드 데이터 안내", "",
       row("교수", DEMO_PROF, f"성적 입력 시연 {lec_label(DEMO_LEC)}"),
       row("교수(퇴직)", "100006", "비활성 계정 로그인 차단"),
       row("학생", RICH, "시연 학생(성적 입력 → 21학점 신청)"),
-      row("학생 겸 조교", "20240005", f"2027-1 {lec_label(TA_LEC)} 조교"), "",
+      row("학생 겸 조교", "20240005", f"2027-1 {lec_label(TA_LEC)} 조교"),
+      row("대학원생 조교", GRAD_TA, f"2027-1 {lec_label(TA_LEC)} 조교. 장바구니·신청 불가"), "",
+      "사용자번호는 숫자만 쓴다: 관리자(정보화팀) 5자리, 교수 6자리, 학부생 8자리, 대학원생 10자리(V6).", "",
       "## 모듈 A: 학사 기준·조회", "",
       row("기능", "시점", "대상", "확인할 것"), row(*["---"] * 4),
       row("성적 조회(GRD-03)", "T0", "20240001", "2026-2 성적은 제출됐지만 확정 전 → 학생 화면 표시 여부"),
@@ -1126,8 +1142,8 @@ gd = ["# 시드 데이터 안내", "",
       row("성적 입력(GRD-01)", "T0", lec_label(DEMO_LEC), f"입력중, {RICH} 빈칸. 수강생 {len(DEMO_ROWS)}명 → 상대평가(A {A_LIMIT}명, A+B {math.floor(len(DEMO_ROWS) * 0.8)}명 한도)"),
       row("성적 입력", "T0", lec_label(DEMO_LEC), f"현재 A {A_NOW}명. A 두 명을 더 주면 제출 불가"),
       row("성적 입력", "T0", "2026-2 나머지 강의", "제출 상태. 수정하면 입력중으로"),
-      row("성적 확정(GRD-02)", "T0", lec_label(NOTENT), "미입력 강의로 보임"),
-      row("성적 확정", "T0", "2026-2 제출 강의", "관리자 확정 → 이후 교수 수정 불가"),
+      row("성적 확정(GRD-02)", "TC", lec_label(NOTENT), "미입력 강의로 보임"),
+      row("성적 확정", "TC", "2026-2 제출 강의", "관리자 확정 → 이후 교수 수정 불가. T0 은 입력 기간 안이라 확정 불가"),
       row("과목(ACA-02)", "T0", "선수과목 6건", "최소취득등급 기본값 D-, 채플 0.5학점 P/F(학기마다 신청, 이수 학점에서 제외)"),
       row("담당 강의(LEC-01)", "T0", f"교수 {DEMO_PROF}", "2026-2·2027-1 담당 강의"),
       row("강의계획서·반영비율(LEC-03)", "T0", ", ".join(f"{l['no']}번" for l in NO_WEIGHTS), "2027-1 반영비율 미입력"),

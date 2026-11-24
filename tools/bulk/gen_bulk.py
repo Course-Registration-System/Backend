@@ -55,7 +55,7 @@ MAX_PER_COHORT = 9_999
 
 # test1234! (BCrypt). 시드와 같은 값
 PWD_HASH = "$2a$10$mVtkuC8t.ybJShFMmg7dAePnho.f1IpD92TXrTXipF.OhtbWdF/.S"
-ADMIN = "9001"
+ADMIN = "90001"            # 관리자(정보화팀) 직번 5자리(V6)
 NULL = r"\N"
 
 # 학기: (sem_no, 연도, 학기구분). 시간 순서

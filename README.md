@@ -33,6 +33,7 @@
 5. 확인: http://localhost:8080/api/health → `{"status":"ok", ...}`
 
 DB 를 처음 상태로 되돌리려면 `docker compose down -v` 후 3번부터 다시 합니다(데이터가 모두 지워집니다).
+새 마이그레이션에서 서버가 뜨지 않을 때도 같은 방법으로 되돌립니다. 예: 직접 만든 계정의 번호가 V6 사용자번호 형식(관리자 5자리, 교수 6자리, 학부생 8자리, 대학원생 10자리)과 다를 때. 로컬 DB 는 시드가 다시 채웁니다.
 
 ### 설정값
 
@@ -51,7 +52,7 @@ DB 를 처음 상태로 되돌리려면 `docker compose down -v` 후 3번부터 
 
 ### 스키마 변경
 
-DDL 은 Docs 레포의 물리적 데이터 모델(`schema.sql`, `grants.sql`)이 기준입니다. `src/main/resources/db/migration/` 에 아래처럼 둡니다.
+DDL 은 팀 Notion 의 물리적 DB모델·테이블기술서가 기준입니다(Docs 레포에는 없습니다). 지금 스키마는 `src/main/resources/db/migration/` 의 `V` 파일을 버전 순서로 적용한 결과이고, 파일은 아래처럼 둡니다.
 
 - `V1__init_schema.sql`: 기준 시점의 `schema.sql`. 적용된 `V` 파일은 고치지 않고, 변경은 `V2__설명.sql` 처럼 새 파일로 쌓습니다.
 - `R__grants.sql`: `grants.sql`. 바뀌면 Flyway 가 다시 적용합니다. 데이터베이스 이름 `crs` 를 가정합니다.
@@ -107,7 +108,7 @@ com.crs.backend
 - 패키지는 업무 영역으로 나눕니다. 이름은 용어사전을 따릅니다: `course` 는 **과목**(교육과정 단위), `lecture` 는 **강의**(학기·분반으로 개설된 과목)입니다.
 - `common.auth` 는 토큰만 보고 DB 를 읽지 않습니다. 로그인처럼 `user_account` 를 읽는 업무는 `user` 에 둡니다. 공통 코드가 업무 패키지에 의존하지 않게 하기 위해서입니다.
 - 관리자 기능은 따로 모으지 않고 해당 업무 패키지에 둡니다. 관리자 전용 API 는 `/api/admin/**` 경로와 권한 검사로 구분합니다.
-- 괄호 안은 Docs 레포 업무분석서의 단위업무 번호입니다.
+- 괄호 안은 업무분석서(팀 Notion)의 단위업무 번호입니다.
 
 ## 패키지 안 구성
 
@@ -127,6 +128,8 @@ enrollment
 - 호출 방향은 Controller → Service → Repository 한 방향입니다. Controller 에서 Repository 를 바로 부르지 않습니다.
 - SQL 은 Repository 에만 씁니다.
 - 다른 모듈의 테이블은 JOIN 으로 읽기만 합니다. 쓰기가 필요하면 그 테이블을 맡은 모듈의 Service 를 부릅니다.
+  - 예외: `student` 의 학년(`yr_lvl`)과 졸업(`std_stat = 'GRADUATED'`)은 `academic` 의 최대학점 산정(ACA-01 ⑤ 진급·졸업, `MaxCreditRepository`)이 재학·휴학생 전원을 SQL 한 문장으로 바꿉니다. 학생마다 `user` Service 를 부르면 수백 번 왕복하고 한 트랜잭션으로 묶기 어렵기 때문입니다(D27).
+  - 그래서 `user`(USR-02)에서 고친 학년은 다음 산정 때 이력 기준으로 다시 계산되어 덮어써집니다. 졸업은 보통 산정에서 정하지만, 관리자가 USR-02 에서 졸업으로 바꾸거나 되돌려 바로잡을 수 있습니다. 되돌린 학생도 요건을 채웠으면 다음 산정에서 다시 졸업이 됩니다(업무분석서 USR-02).
 - 클래스 이름은 용어사전의 물리명을 단수형으로 씁니다(`lecture` → `Lecture`, `course_cart` → `CourseCart`).
 
 ## 오류 응답

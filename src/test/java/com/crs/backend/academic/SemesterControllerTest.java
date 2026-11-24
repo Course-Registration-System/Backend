@@ -16,6 +16,7 @@ import com.crs.backend.support.SeedFixtures.Account;
 import com.crs.backend.support.SeedFixtures.Semester;
 import com.crs.backend.support.SeedFixtures.Student;
 import com.jayway.jsonpath.JsonPath;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -165,7 +166,7 @@ class SemesterControllerTest extends IntegrationTest {
         schedule(semNo, "ADJUST", null, "2027-08-13T10:00:00", "2027-09-08T17:00:00")
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("SCHEDULE_ORDER"));
-        schedule(semNo, "CART", 1, "2027-08-01T10:00:00", "2027-08-10T12:00:00")
+        schedule(semNo, "CART", null, "2027-08-01T10:00:00", "2027-08-10T12:00:00")
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("SCHEDULE_ORDER"));
         schedule(semNo, "ADJUST", null, "2027-09-02T10:00:00", "2027-09-08T17:00:00")
@@ -223,6 +224,18 @@ class SemesterControllerTest extends IntegrationTest {
         schedule(semNo, "CART", null, "2026-12-21T10:00:00", "2027-07-24T17:00:00")
                 .andExpect(status().isBadRequest());
         schedule(semNo, "CART", null, "2026-12-21T10:01:00", "2027-07-24T17:00:00")
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void 대상학년은_수강신청_일정에만_지정한다() throws Exception {
+        int semNo = createSemester(2027, "SECOND");
+        for (String type : List.of("CART", "ADJUST", "GRADE")) {
+            schedule(semNo, type, 1, "2027-07-20T10:00:00", "2027-07-24T17:00:00")
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.detail").value("대상학년은 수강신청 일정에만 지정합니다."));
+        }
+        schedule(semNo, "ENROLL", 1, "2027-08-13T10:00:00", "2027-08-13T17:00:00")
                 .andExpect(status().isCreated());
     }
 

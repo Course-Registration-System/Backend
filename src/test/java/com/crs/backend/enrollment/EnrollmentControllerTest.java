@@ -12,6 +12,7 @@ import com.crs.backend.common.auth.JwtProvider;
 import com.crs.backend.common.auth.Role;
 import com.crs.backend.support.Bearer;
 import com.crs.backend.support.IntegrationTest;
+import com.crs.backend.support.SeedFixtures.Account;
 import com.crs.backend.support.SeedFixtures.Lecture;
 import com.crs.backend.support.SeedFixtures.Semester;
 import com.crs.backend.support.SeedFixtures.Student;
@@ -95,6 +96,18 @@ class EnrollmentControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 대학원생은_신청할_수_없다() throws Exception {
+        enroll(Student.GRADUATE_ASSISTANT, COMPILER)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("GRADUATE_STUDENT_NOT_ALLOWED"));
+        // 다른 학년의 신청일에도 기간 안내가 아니라 대학원생 불가를 알린다
+        TestClock.at(clock, TestClock.ENROLL_3RD_YEAR);
+        enroll(Student.GRADUATE_ASSISTANT, COMPILER)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("GRADUATE_STUDENT_NOT_ALLOWED"));
+    }
+
+    @Test
     void 폐강_강의는_신청할_수_없다() throws Exception {
         enroll(STUDENT, Lecture.CLOSED).andExpect(jsonPath("$.code").value("LECTURE_CLOSED"));
     }
@@ -124,13 +137,18 @@ class EnrollmentControllerTest extends IntegrationTest {
         String original =
                 root.queryForObject("SELECT grd_stat FROM lecture WHERE lec_no = ?", String.class, serviceLastTerm);
         root.update(
-                "UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_dtm = '2026-12-24 10:00:00' WHERE lec_no = ?",
+                "UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = ?, cnfm_dtm = '2026-12-24 10:00:00'"
+                        + " WHERE lec_no = ?",
+                Account.ADMIN,
                 serviceLastTerm);
         try {
             enroll(Student.PASS_FAIL_ONLY, lecture("1030002", 1))
                     .andExpect(jsonPath("$.code").value("RETAKE_NOT_ALLOWED"));
         } finally {
-            root.update("UPDATE lecture SET grd_stat = ?, cnfm_dtm = NULL WHERE lec_no = ?", original, serviceLastTerm);
+            root.update(
+                    "UPDATE lecture SET grd_stat = ?, cnfm_emp_no = NULL, cnfm_dtm = NULL WHERE lec_no = ?",
+                    original,
+                    serviceLastTerm);
         }
     }
 

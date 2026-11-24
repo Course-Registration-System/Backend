@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | `01_state_change.sql` | root | 정원 마감, 최대학점 변경, 신청 기간 종료, 계정 비활성화 |
 | `01_state_change_undo.sql` | root | 01 되돌리기 |
-| `02_constraint_violations.sql` | app | 중복 신청, 현재 학기 둘, 점수 범위, P/F 점수, 학점, 반영비율 합, 온라인 강의실, 없는 강의실, 최대학점 값, 기간 역전 → 모두 DB 제약으로 거부 |
+| `02_constraint_violations.sql` | app | 중복 신청, 현재 학기 둘, 점수 범위, 없는 등급, 학점, 반영비율 합, 온라인 강의실, 없는 강의실, 최대학점 값, 기간 역전 → 모두 DB 제약으로 거부 |
 | `03_permission_app.sql` | app | 이력 삭제·DDL·시드 전용 테이블 추가 거부, 장바구니 삭제는 허용 |
 | `04_permission_readonly.sql` | readonly | 조회만 허용 |
 

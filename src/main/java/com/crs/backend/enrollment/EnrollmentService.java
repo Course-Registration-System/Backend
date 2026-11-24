@@ -12,6 +12,7 @@ import com.crs.backend.enrollment.dto.EnrollmentResponse;
 import com.crs.backend.enrollment.dto.EnrollmentStatusResponse;
 import com.crs.backend.grade.GradeQuery;
 import com.crs.backend.lecture.LecStat;
+import com.crs.backend.user.UserNo;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -65,6 +66,10 @@ public class EnrollmentService {
     public EnrollmentResponse enroll(CurrentUser user, int lecNo) {
         String stdNo = requireStudent(user);
         StudentState student = lockStudent(stdNo, ErrorCode.FORBIDDEN);
+        // 대학원생 학년은 다시 계산하지 않는 값이라, 학년별 기간 검사보다 먼저 막는다
+        if (UserNo.isGraduate(stdNo)) {
+            throw new BusinessException(ErrorCode.GRADUATE_STUDENT_NOT_ALLOWED);
+        }
         int semNo = registrationSemester();
         checkStudentPeriod(semNo, student);
         LectureInfo lecture = lockLecture(lecNo);
@@ -141,7 +146,7 @@ public class EnrollmentService {
     /** 처리 내용 ②~⑨. 학생과 강의를 잠근 뒤 부릅니다. 정원이 찼을 때 학생은 막고, 관리자는 정원을 늘립니다. */
     private void register(String stdNo, StudentState student, int lecNo, LectureInfo lecture, ProcType procType) {
         int semNo = lecture.semNo();
-        StudentStatusRule.check(student.stdStat(), enrollmentRepository.isSeasonal(semNo));
+        StudentStatusRule.check(stdNo, student.stdStat(), enrollmentRepository.isSeasonal(semNo));
         if (lecture.lecStat() == LecStat.CLOSED) {
             throw new BusinessException(ErrorCode.LECTURE_CLOSED);
         }
@@ -271,15 +276,20 @@ public class EnrollmentService {
         }
     }
 
-    /** 관리자는 학년과 상관없이 첫 수강신청일부터 정정 기간 종료 전까지 추가·취소합니다. */
+    /**
+     * 관리자는 학년과 상관없이 첫 수강신청일부터 신청 종료(정정 종료, 정정이 없으면 마지막 수강신청일 종료) 전까지 추가·취소합니다. 수강신청
+     * 일정이 있으면 신청 종료도 있으므로, 시작했는데 종료가 비는 경우는 없습니다.
+     */
     private void checkAdminPeriod(int semNo) {
         LocalDateTime now = LocalDateTime.now(clock);
         boolean started = schedulePolicy
                 .enrollStart(semNo)
                 .map(start -> !now.isBefore(start))
                 .orElse(false);
-        boolean over =
-                schedulePolicy.adjustEnd(semNo).map(end -> !now.isBefore(end)).orElse(false);
+        boolean over = schedulePolicy
+                .registrationEnd(semNo)
+                .map(end -> !now.isBefore(end))
+                .orElse(false);
         if (!started || over) {
             throw new BusinessException(ErrorCode.ENROLL_CLOSED);
         }

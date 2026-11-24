@@ -40,6 +40,12 @@ public class MaxCreditService {
 
     @Transactional
     public MaxCreditResult calculate(int semNo) {
+        // 같은 학기 산정이 동시에 들어오면 학기 행 잠금으로 하나씩 처리한다. 지금도 그 학기 결과를 지우는 DELETE 의 행 잠금이 순서를
+        // 만들지만, 그건 SQL 실행 방식에 기댄 결과라 일정 등록·삭제(SemesterService)와 같은 잠금을 명시한다. 잠금이 트랜잭션의 첫
+        // 읽기라 뒤의 읽기는 앞 산정이 커밋한 결과를 본다
+        if (!semesterRepository.lock(semNo)) {
+            throw new BusinessException(ErrorCode.SEMESTER_NOT_FOUND);
+        }
         SemesterResponse semester = get(semNo);
         int targetOrd = order(semester);
         if (maxCreditRepository.anyScheduleStartedFrom(targetOrd, LocalDateTime.now(clock))) {
