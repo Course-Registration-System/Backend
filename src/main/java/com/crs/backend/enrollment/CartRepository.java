@@ -26,7 +26,7 @@ public class CartRepository {
 
     // ---- 조회
 
-    /** 담은 순서대로. 순서 지정 컬럼이 생기기 전까지는 담은 시각 순입니다. */
+    /** 담은 시각 순입니다. 학생이 순서를 정하는 기능은 두지 않습니다(REG-02). */
     public List<CartItemResponse> findItems(String stdNo, int semNo) {
         Map<Integer, List<TimeSlotResponse>> slots = findSlots(stdNo, semNo);
         return jdbc.query(

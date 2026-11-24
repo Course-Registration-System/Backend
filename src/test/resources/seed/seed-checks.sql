@@ -44,14 +44,37 @@ SELECT COUNT(*) FROM s a JOIN s b
   ON a.sem_no = b.sem_no AND a.prof_no = b.prof_no AND a.lec_no < b.lec_no
  AND a.dow = b.dow AND a.start_tm < b.end_tm AND b.start_tm < a.end_tm;
 
--- CHECK 최대학점 초과(채플 제외) | 0
+-- CHECK 최대학점 초과(채플 제외). 산정 값이 없으면 정규학기 18, 계절학기는 학적상태 기준(재학 6, 휴학 3) | 0
 SELECT COUNT(*) FROM (
   SELECT e.std_no, l.sem_no, SUM(c.crdt) AS crdt
   FROM enrollment e JOIN lecture l USING (lec_no) JOIN course c USING (crs_cd)
   WHERE e.enrl_stat = 'ENROLLED' AND c.cmpl_type <> 'CHAPEL'
   GROUP BY e.std_no, l.sem_no) x
+JOIN semester s ON s.sem_no = x.sem_no JOIN student st ON st.std_no = x.std_no
 LEFT JOIN semester_maximum_credit m ON m.std_no = x.std_no AND m.sem_no = x.sem_no
-WHERE x.crdt > COALESCE(m.max_crdt, 18);
+WHERE x.crdt > COALESCE(m.max_crdt, CASE WHEN s.sem_type IN ('FIRST', 'SECOND') THEN 18
+                                         WHEN st.std_stat = 'ON_LEAVE' THEN 3 ELSE 6 END);
+
+-- CHECK 최대학점 값이 학기구분과 맞지 않음(정규학기 18·21, 계절학기 6·3) | 0
+SELECT COUNT(*) FROM semester_maximum_credit m JOIN semester s USING (sem_no)
+WHERE (s.sem_type IN ('FIRST', 'SECOND')) <> (m.max_crdt IN (18, 21));
+
+-- CHECK 폐강 강의에 남은 신청·장바구니 | 0
+SELECT
+  (SELECT COUNT(*) FROM enrollment e JOIN lecture l USING (lec_no) WHERE l.lec_stat = 'CLOSED' AND e.enrl_stat = 'ENROLLED')
++ (SELECT COUNT(*) FROM course_cart c JOIN lecture l USING (lec_no) WHERE l.lec_stat = 'CLOSED');
+
+-- CHECK 수강생이 같은 강의의 조교 | 0
+SELECT COUNT(*) FROM teaching_assistant_assignment t
+JOIN enrollment e ON e.std_no = t.std_no AND e.lec_no = t.lec_no AND e.enrl_stat = 'ENROLLED';
+
+-- CHECK 선수과목 순환 | 0
+WITH RECURSIVE path AS (
+  SELECT crs_cd AS start_cd, prereq_crs_cd AS cur_cd, 1 AS depth FROM prerequisite_course
+  UNION ALL
+  SELECT p.start_cd, q.prereq_crs_cd, p.depth + 1 FROM path p JOIN prerequisite_course q ON q.crs_cd = p.cur_cd
+  WHERE p.depth < 50 AND p.cur_cd <> p.start_cd)
+SELECT COUNT(DISTINCT start_cd) FROM path WHERE cur_cd = start_cd;
 
 -- CHECK 같은 학기 같은 과목 중복 신청 | 0
 SELECT COUNT(*) FROM (
@@ -120,16 +143,65 @@ nxt AS (
 SELECT COUNT(*) FROM lecture l JOIN nxt USING (sem_no)
 WHERE l.grd_stat = 'CONFIRMED' AND l.cnfm_dtm >= nxt.cart_start;
 
--- CHECK 등급이 기준표(총점)와 다름. 상대평가 비율은 점수를 조정해 맞추고, 재수강만 총점과 관계없이 A- 상한 | 0
-SELECT COUNT(*) FROM grade g
-JOIN enrollment e ON e.std_no = g.std_no AND e.lec_no = g.lec_no
-WHERE g.tot_scr IS NOT NULL AND g.ltr_grd IS NOT NULL
-  AND g.ltr_grd <> CASE WHEN e.retake_yn = 'Y' AND g.tot_scr >= 90 THEN 'A-'
-                        WHEN g.tot_scr >= 97 THEN 'A+' WHEN g.tot_scr >= 94 THEN 'A0' WHEN g.tot_scr >= 90 THEN 'A-'
-                        WHEN g.tot_scr >= 87 THEN 'B+' WHEN g.tot_scr >= 84 THEN 'B0' WHEN g.tot_scr >= 80 THEN 'B-'
-                        WHEN g.tot_scr >= 77 THEN 'C+' WHEN g.tot_scr >= 74 THEN 'C0' WHEN g.tot_scr >= 70 THEN 'C-'
-                        WHEN g.tot_scr >= 67 THEN 'D+' WHEN g.tot_scr >= 64 THEN 'D0' WHEN g.tot_scr >= 60 THEN 'D-'
+-- CHECK 등급이 기준표(최종점수, 없으면 총점)와 다름. 최종점수는 GRD-01 계산값(상대평가는 구역별 상한, 절대평가는 총점)이고, 비어 있으면 총점으로 본다. 재수강만 점수와 관계없이 A- 상한 | 0
+SELECT COUNT(*) FROM (
+  SELECT g.ltr_grd, e.retake_yn, COALESCE(g.fnl_scr, g.tot_scr) AS scr
+  FROM grade g
+  JOIN enrollment e ON e.std_no = g.std_no AND e.lec_no = g.lec_no
+  JOIN lecture l ON l.lec_no = g.lec_no JOIN course c ON c.crs_cd = l.crs_cd
+  WHERE c.eval_type = 'GRADE' AND g.tot_scr IS NOT NULL AND g.ltr_grd IS NOT NULL) x
+WHERE x.ltr_grd <> CASE WHEN x.retake_yn = 'Y' AND x.scr >= 90 THEN 'A-'
+                        WHEN x.scr >= 97 THEN 'A+' WHEN x.scr >= 94 THEN 'A0' WHEN x.scr >= 90 THEN 'A-'
+                        WHEN x.scr >= 87 THEN 'B+' WHEN x.scr >= 84 THEN 'B0' WHEN x.scr >= 80 THEN 'B-'
+                        WHEN x.scr >= 77 THEN 'C+' WHEN x.scr >= 74 THEN 'C0' WHEN x.scr >= 70 THEN 'C-'
+                        WHEN x.scr >= 67 THEN 'D+' WHEN x.scr >= 64 THEN 'D0' WHEN x.scr >= 60 THEN 'D-'
                         ELSE 'F' END;
+
+-- CHECK 총점 = 항목 점수 × 반영 비율 합 / 100 (소수점 버림) | 0
+SELECT COUNT(*) FROM grade g JOIN lecture l USING (lec_no)
+WHERE g.tot_scr IS NOT NULL
+  AND (l.mid_wt IS NULL OR g.mid_scr IS NULL OR g.fin_scr IS NULL OR g.hw_scr IS NULL OR g.att_scr IS NULL
+       OR g.tot_scr <> FLOOR((g.mid_scr * l.mid_wt + g.fin_scr * l.fin_wt + g.hw_scr * l.hw_wt + g.att_scr * l.att_wt) / 100));
+
+-- CHECK 절대평가 강의의 최종점수가 총점과 다름(최종점수가 있는 행, 재수강은 총점과 93 중 작은 값. 상대평가는 수강인원 10명 이상 등급제, 전공 영어강의·제외 인정 제외) | 0
+WITH rel AS (
+  SELECT l.lec_no FROM lecture l JOIN course c USING (crs_cd)
+  WHERE c.eval_type = 'GRADE' AND l.rel_grd_exmp_yn = 'N'
+    AND NOT (l.eng_lec_yn = 'Y' AND c.cmpl_type IN ('MAJOR_BASIC', 'MAJOR_REQ', 'MAJOR_ELEC'))
+    AND (SELECT COUNT(*) FROM enrollment e WHERE e.lec_no = l.lec_no AND e.enrl_stat = 'ENROLLED') >= 10)
+SELECT COUNT(*) FROM grade g JOIN enrollment e USING (std_no, lec_no)
+WHERE g.fnl_scr IS NOT NULL AND g.lec_no NOT IN (SELECT lec_no FROM rel)
+  AND (g.tot_scr IS NULL OR g.fnl_scr <> IF(e.retake_yn = 'Y', LEAST(g.tot_scr, 93), g.tot_scr));
+
+-- CHECK 재수강 최종점수가 93 초과(GRD-01 재수강은 A- 상한, 최종점수도 93 상한) | 0
+SELECT COUNT(*) FROM grade g JOIN enrollment e USING (std_no, lec_no)
+WHERE e.retake_yn = 'Y' AND g.fnl_scr > 93;
+
+-- CHECK 상대평가 강의에서 원점수 총점이 높은데 최종점수가 낮은 학생 쌍(순서 보존. 재수강 A- 상한으로 깎인 학생은 높은 쪽에서 제외) | 0
+WITH rel AS (
+  SELECT l.lec_no FROM lecture l JOIN course c USING (crs_cd)
+  WHERE c.eval_type = 'GRADE' AND l.rel_grd_exmp_yn = 'N'
+    AND NOT (l.eng_lec_yn = 'Y' AND c.cmpl_type IN ('MAJOR_BASIC', 'MAJOR_REQ', 'MAJOR_ELEC'))
+    AND (SELECT COUNT(*) FROM enrollment e WHERE e.lec_no = l.lec_no AND e.enrl_stat = 'ENROLLED') >= 10),
+s AS (
+  SELECT g.lec_no, e.retake_yn, g.fnl_scr,
+         g.mid_scr * l.mid_wt + g.fin_scr * l.fin_wt + g.hw_scr * l.hw_wt + g.att_scr * l.att_wt AS raw100
+  FROM grade g JOIN lecture l USING (lec_no)
+  JOIN enrollment e ON e.std_no = g.std_no AND e.lec_no = g.lec_no AND e.enrl_stat = 'ENROLLED'
+  WHERE g.lec_no IN (SELECT lec_no FROM rel) AND g.fnl_scr IS NOT NULL)
+SELECT COUNT(*) FROM s a JOIN s b ON a.lec_no = b.lec_no
+WHERE a.retake_yn = 'N' AND a.raw100 > b.raw100 AND a.fnl_scr < b.fnl_scr;
+
+-- CHECK P/F 과목 성적에 점수 있음(P/F 는 항목 점수·총점·최종점수 모두 비움) | 0
+SELECT COUNT(*) FROM grade g JOIN lecture l USING (lec_no) JOIN course c USING (crs_cd)
+WHERE c.eval_type = 'PASS_FAIL'
+  AND (g.mid_scr IS NOT NULL OR g.fin_scr IS NOT NULL OR g.hw_scr IS NOT NULL OR g.att_scr IS NOT NULL
+       OR g.tot_scr IS NOT NULL OR g.fnl_scr IS NOT NULL);
+
+-- CHECK 평가방식과 등급이 맞지 않음(P/F 과목은 P·F만, 등급제 과목에는 P 없음) | 0
+SELECT COUNT(*) FROM grade g JOIN lecture l USING (lec_no) JOIN course c USING (crs_cd)
+WHERE (c.eval_type = 'PASS_FAIL' AND g.ltr_grd NOT IN ('P', 'F'))
+   OR (c.eval_type = 'GRADE' AND g.ltr_grd = 'P');
 
 -- CHECK 역할과 하위 테이블 불일치 | 0
 SELECT COUNT(*) FROM user_account u
@@ -157,13 +229,14 @@ LEFT JOIN course_cart c ON c.std_no = e.std_no AND c.lec_no = e.lec_no
 WHERE s.yr = 2027 AND s.sem_type = 'FIRST' AND c.std_no IS NULL;
 
 -- CHECK 학년 = min(4, 다닌 정규학기 수 / 2 + 1) | 0
+-- 대학원생(학번 10자리)은 조교로만 써서 학년·졸업·최대학점 대상이 아니다(V6)
 SELECT COUNT(*) FROM student st
 LEFT JOIN (
   SELECT e.std_no, COUNT(DISTINCT l.sem_no) AS n
   FROM enrollment e JOIN lecture l USING (lec_no) JOIN semester s USING (sem_no)
   WHERE e.enrl_stat = 'ENROLLED' AND l.grd_stat = 'CONFIRMED' AND s.sem_type IN ('FIRST', 'SECOND')
   GROUP BY e.std_no) x ON x.std_no = st.std_no
-WHERE st.yr_lvl <> LEAST(4, FLOOR(COALESCE(x.n, 0) / 2) + 1);
+WHERE CHAR_LENGTH(st.std_no) <> 10 AND st.yr_lvl <> LEAST(4, FLOOR(COALESCE(x.n, 0) / 2) + 1);
 
 -- CHECK 졸업 판정(정규 8학기 이상, 채플 뺀 이수 130학점 이상, 채플 P 6학기 이상) 불일치 | 0
 WITH ord AS (SELECT sem_no, yr * 10 + FIELD(sem_type, 'FIRST', 'SUMMER', 'SECOND', 'WINTER') AS o FROM semester),
@@ -186,7 +259,7 @@ sem AS (
   GROUP BY e.std_no)
 SELECT COUNT(*) FROM student st
 LEFT JOIN crd ON crd.std_no = st.std_no LEFT JOIN sem ON sem.std_no = st.std_no LEFT JOIN chp ON chp.std_no = st.std_no
-WHERE st.std_stat <> 'ON_LEAVE'
+WHERE st.std_stat <> 'ON_LEAVE' AND CHAR_LENGTH(st.std_no) <> 10
   AND (st.std_stat = 'GRADUATED') <> (COALESCE(sem.n, 0) >= 8 AND COALESCE(crd.crdt, 0) >= 130 AND COALESCE(chp.n, 0) >= 6);
 
 -- CHECK 졸업생의 신청 대상 학기 장바구니·신청·최대학점·조교 | 0
@@ -223,7 +296,7 @@ last AS (
 expect AS (
   SELECT st.std_no, CASE WHEN l.gpa >= 4.0 THEN 21 ELSE 18 END AS mx
   FROM student st LEFT JOIN last l ON l.std_no = st.std_no
-  WHERE st.std_stat = 'ATTENDING')
+  WHERE st.std_stat = 'ATTENDING' AND CHAR_LENGTH(st.std_no) <> 10)
 SELECT
   (SELECT COUNT(*) FROM expect x LEFT JOIN semester_maximum_credit m
      ON m.std_no = x.std_no AND m.sem_no = (SELECT sem_no FROM tgt)
