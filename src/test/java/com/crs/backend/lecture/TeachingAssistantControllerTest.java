@@ -71,12 +71,16 @@ class TeachingAssistantControllerTest extends IntegrationTest {
         professor(taLectureProfessor, get(path(Lecture.TA_TARGET)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lecNo").value(Lecture.TA_TARGET))
-                .andExpect(jsonPath("$.assistants", hasSize(1)))
+                // 학번 순. 학부생 조교와 대학원생 조교(학번 10자리)
+                .andExpect(jsonPath("$.assistants", hasSize(2)))
                 .andExpect(jsonPath("$.assistants[0].stdNo").value(Student.TEACHING_ASSISTANT))
                 .andExpect(jsonPath("$.assistants[0].usrNm").value("장수아"))
                 .andExpect(jsonPath("$.assistants[0].deptNm").value("경영학부"))
                 .andExpect(jsonPath("$.assistants[0].yrLvl").value(3))
-                .andExpect(jsonPath("$.assistants[0].email").value("20240005@example.ac.kr"));
+                .andExpect(jsonPath("$.assistants[0].email").value("20240005@example.ac.kr"))
+                .andExpect(jsonPath("$.assistants[1].stdNo").value(Student.GRADUATE_ASSISTANT))
+                .andExpect(jsonPath("$.assistants[1].usrNm").value("정대원"))
+                .andExpect(jsonPath("$.assistants[1].deptNm").value("컴퓨터학부"));
     }
 
     @Test
@@ -169,6 +173,14 @@ class TeachingAssistantControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 대학원생은_조교로_지정할_수_있다() throws Exception {
+        // 대학원생(학번 10자리)은 수강신청은 못 하지만 조교는 된다
+        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, Student.GRADUATE_ASSISTANT)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assistants[*].stdNo", contains(Student.GRADUATE_ASSISTANT)));
+    }
+
+    @Test
     void 폐강_강의에는_조교를_추가할_수_없고_목록은_볼_수_있다() throws Exception {
         addAs(taLectureProfessor, Lecture.CLOSED, FREE_STUDENT)
                 .andExpect(status().isConflict())
@@ -199,7 +211,8 @@ class TeachingAssistantControllerTest extends IntegrationTest {
 
         // 거부된 요청은 아무것도 바꾸지 않는다
         professor(taLectureProfessor, get(path(Lecture.TA_TARGET)))
-                .andExpect(jsonPath("$.assistants[*].stdNo", contains(Student.TEACHING_ASSISTANT)));
+                .andExpect(jsonPath(
+                        "$.assistants[*].stdNo", contains(Student.TEACHING_ASSISTANT, Student.GRADUATE_ASSISTANT)));
     }
 
     @Test
@@ -218,7 +231,8 @@ class TeachingAssistantControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.code").value("ASSISTANT_LECTURE_FINISHED"));
         professor(taLectureProfessor, get(path(Lecture.TA_TARGET)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.assistants[*].stdNo", contains(Student.TEACHING_ASSISTANT)));
+                .andExpect(jsonPath(
+                        "$.assistants[*].stdNo", contains(Student.TEACHING_ASSISTANT, Student.GRADUATE_ASSISTANT)));
     }
 
     @Test
@@ -229,7 +243,8 @@ class TeachingAssistantControllerTest extends IntegrationTest {
         addAs(taLectureProfessor, Lecture.TA_TARGET, FREE_STUDENT)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath(
-                        "$.assistants[*].stdNo", containsInAnyOrder(FREE_STUDENT, Student.TEACHING_ASSISTANT)));
+                        "$.assistants[*].stdNo",
+                        containsInAnyOrder(FREE_STUDENT, Student.TEACHING_ASSISTANT, Student.GRADUATE_ASSISTANT)));
     }
 
     @Test
@@ -245,7 +260,7 @@ class TeachingAssistantControllerTest extends IntegrationTest {
     void 담당_교수가_조교를_삭제하면_바뀐_목록을_주고_다시_지우면_404() throws Exception {
         professor(taLectureProfessor, delete(path(Lecture.TA_TARGET) + "/" + Student.TEACHING_ASSISTANT))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.assistants", hasSize(0)));
+                .andExpect(jsonPath("$.assistants[*].stdNo", contains(Student.GRADUATE_ASSISTANT)));
         professor(taLectureProfessor, delete(path(Lecture.TA_TARGET) + "/" + Student.TEACHING_ASSISTANT))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ASSISTANT_NOT_FOUND"));
