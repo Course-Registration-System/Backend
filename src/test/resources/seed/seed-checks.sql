@@ -194,13 +194,14 @@ LEFT JOIN course_cart c ON c.std_no = e.std_no AND c.lec_no = e.lec_no
 WHERE s.yr = 2027 AND s.sem_type = 'FIRST' AND c.std_no IS NULL;
 
 -- CHECK 학년 = min(4, 다닌 정규학기 수 / 2 + 1) | 0
+-- 대학원생(학번 10자리)은 조교로만 써서 학년·졸업·최대학점 대상이 아니다(V6)
 SELECT COUNT(*) FROM student st
 LEFT JOIN (
   SELECT e.std_no, COUNT(DISTINCT l.sem_no) AS n
   FROM enrollment e JOIN lecture l USING (lec_no) JOIN semester s USING (sem_no)
   WHERE e.enrl_stat = 'ENROLLED' AND l.grd_stat = 'CONFIRMED' AND s.sem_type IN ('FIRST', 'SECOND')
   GROUP BY e.std_no) x ON x.std_no = st.std_no
-WHERE st.yr_lvl <> LEAST(4, FLOOR(COALESCE(x.n, 0) / 2) + 1);
+WHERE CHAR_LENGTH(st.std_no) <> 10 AND st.yr_lvl <> LEAST(4, FLOOR(COALESCE(x.n, 0) / 2) + 1);
 
 -- CHECK 졸업 판정(정규 8학기 이상, 채플 뺀 이수 130학점 이상, 채플 P 6학기 이상) 불일치 | 0
 WITH ord AS (SELECT sem_no, yr * 10 + FIELD(sem_type, 'FIRST', 'SUMMER', 'SECOND', 'WINTER') AS o FROM semester),
@@ -223,7 +224,7 @@ sem AS (
   GROUP BY e.std_no)
 SELECT COUNT(*) FROM student st
 LEFT JOIN crd ON crd.std_no = st.std_no LEFT JOIN sem ON sem.std_no = st.std_no LEFT JOIN chp ON chp.std_no = st.std_no
-WHERE st.std_stat <> 'ON_LEAVE'
+WHERE st.std_stat <> 'ON_LEAVE' AND CHAR_LENGTH(st.std_no) <> 10
   AND (st.std_stat = 'GRADUATED') <> (COALESCE(sem.n, 0) >= 8 AND COALESCE(crd.crdt, 0) >= 130 AND COALESCE(chp.n, 0) >= 6);
 
 -- CHECK 졸업생의 신청 대상 학기 장바구니·신청·최대학점·조교 | 0
@@ -260,7 +261,7 @@ last AS (
 expect AS (
   SELECT st.std_no, CASE WHEN l.gpa >= 4.0 THEN 21 ELSE 18 END AS mx
   FROM student st LEFT JOIN last l ON l.std_no = st.std_no
-  WHERE st.std_stat = 'ATTENDING')
+  WHERE st.std_stat = 'ATTENDING' AND CHAR_LENGTH(st.std_no) <> 10)
 SELECT
   (SELECT COUNT(*) FROM expect x LEFT JOIN semester_maximum_credit m
      ON m.std_no = x.std_no AND m.sem_no = (SELECT sem_no FROM tgt)
