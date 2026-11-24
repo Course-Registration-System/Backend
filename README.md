@@ -52,7 +52,7 @@ DB 를 처음 상태로 되돌리려면 `docker compose down -v` 후 3번부터 
 
 ### 스키마 변경
 
-DDL 은 Docs 레포의 물리적 데이터 모델(`schema.sql`, `grants.sql`)이 기준입니다. `src/main/resources/db/migration/` 에 아래처럼 둡니다.
+DDL 은 팀 Notion 의 물리적 DB모델·테이블기술서가 기준입니다(Docs 레포에는 없습니다). 지금 스키마는 `src/main/resources/db/migration/` 의 `V` 파일을 버전 순서로 적용한 결과이고, 파일은 아래처럼 둡니다.
 
 - `V1__init_schema.sql`: 기준 시점의 `schema.sql`. 적용된 `V` 파일은 고치지 않고, 변경은 `V2__설명.sql` 처럼 새 파일로 쌓습니다.
 - `R__grants.sql`: `grants.sql`. 바뀌면 Flyway 가 다시 적용합니다. 데이터베이스 이름 `crs` 를 가정합니다.
@@ -108,7 +108,7 @@ com.crs.backend
 - 패키지는 업무 영역으로 나눕니다. 이름은 용어사전을 따릅니다: `course` 는 **과목**(교육과정 단위), `lecture` 는 **강의**(학기·분반으로 개설된 과목)입니다.
 - `common.auth` 는 토큰만 보고 DB 를 읽지 않습니다. 로그인처럼 `user_account` 를 읽는 업무는 `user` 에 둡니다. 공통 코드가 업무 패키지에 의존하지 않게 하기 위해서입니다.
 - 관리자 기능은 따로 모으지 않고 해당 업무 패키지에 둡니다. 관리자 전용 API 는 `/api/admin/**` 경로와 권한 검사로 구분합니다.
-- 괄호 안은 Docs 레포 업무분석서의 단위업무 번호입니다.
+- 괄호 안은 업무분석서(팀 Notion)의 단위업무 번호입니다.
 
 ## 패키지 안 구성
 
