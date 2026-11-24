@@ -1,6 +1,7 @@
 package com.crs.backend.lecture;
 
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -218,6 +219,17 @@ class TeachingAssistantControllerTest extends IntegrationTest {
         professor(taLectureProfessor, get(path(Lecture.TA_TARGET)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.assistants[*].stdNo", contains(Student.TEACHING_ASSISTANT)));
+    }
+
+    @Test
+    void 성적_확정_전이면_제출_상태여도_조교를_추가할_수_있다() throws Exception {
+        // 확정 바로 앞 단계인 '제출'까지는 성적을 고칠 수 있어 조교가 할 일이 남아 있다
+        jdbc.update("UPDATE lecture SET grd_stat = 'SUBMITTED' WHERE lec_no = ?", Lecture.TA_TARGET);
+
+        addAs(taLectureProfessor, Lecture.TA_TARGET, FREE_STUDENT)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.assistants[*].stdNo", containsInAnyOrder(FREE_STUDENT, Student.TEACHING_ASSISTANT)));
     }
 
     @Test
