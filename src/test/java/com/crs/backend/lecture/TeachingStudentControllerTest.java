@@ -38,8 +38,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class TeachingStudentControllerTest extends IntegrationTest {
 
-    /** 시드: 조교(20240005)가 2026-2 에 배정된 강의 */
-    private static final int TA_CURRENT_LECTURE = 162;
     /** 2027-1 신청 종료(정정 종료) */
     private static final String Y2027_FIRST_REGISTRATION_END = "2027-03-09T17:00:00";
     /** 2027-1 마지막 수강신청일 종료 */
@@ -117,7 +115,8 @@ class TeachingStudentControllerTest extends IntegrationTest {
 
     @Test
     void 배정된_조교도_명단을_본다() throws Exception {
-        as(Student.TEACHING_ASSISTANT, Role.STUDENT, TA_CURRENT_LECTURE).andExpect(status().isOk());
+        as(Student.TEACHING_ASSISTANT, Role.STUDENT, assistantLectureIn(Semester.Y2026_SECOND))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -201,6 +200,22 @@ class TeachingStudentControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 폐강_강의는_막지_않고_빈_명단이다() throws Exception {
+        // 폐강하면 신청을 모두 취소하므로(ACA-03) 취소된 신청만 남는다
+        jdbc.update(
+                "INSERT INTO enrollment (std_no, lec_no, enrl_stat, retake_yn, proc_type, enrl_dtm, cncl_dtm)"
+                        + " VALUES (?, ?, 'CANCELLED', 'N', 'ADMIN', '2027-02-09 10:00:00', '2027-03-05 10:00:00')",
+                Student.DEMO,
+                Lecture.CLOSED);
+
+        TestClock.at(clock, Y2027_FIRST_REGISTRATION_END);
+        asProfessorOf(Lecture.CLOSED)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lecNo").value(Lecture.CLOSED))
+                .andExpect(jsonPath("$.students", hasSize(0)));
+    }
+
+    @Test
     void 신청_일정이_없는_학기는_바로_볼_수_있다() throws Exception {
         int lecNo = nextSemesterLecture();
         jdbc.update(
@@ -208,6 +223,16 @@ class TeachingStudentControllerTest extends IntegrationTest {
                 Semester.Y2027_FIRST);
 
         asProfessorOf(lecNo).andExpect(status().isOk());
+    }
+
+    /** 조교(Student.TEACHING_ASSISTANT)가 그 학기에 배정된 강의. 시드를 다시 만들면 번호가 바뀌어서 학기로 찾는다 */
+    private int assistantLectureIn(int semNo) {
+        return jdbc.queryForObject(
+                "SELECT a.lec_no FROM teaching_assistant_assignment a JOIN lecture l ON l.lec_no = a.lec_no"
+                        + " WHERE a.std_no = ? AND l.sem_no = ?",
+                Integer.class,
+                Student.TEACHING_ASSISTANT,
+                semNo);
     }
 
     /** 2027-1 개설 강의 하나. 시드를 다시 만들면 번호가 바뀌어서 학기로 찾는다 */
