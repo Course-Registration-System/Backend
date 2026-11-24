@@ -4,7 +4,6 @@ import com.crs.backend.academic.dto.MaxCreditItem;
 import com.crs.backend.grade.GradePoint;
 import com.crs.backend.grade.SemesterOrder;
 import com.crs.backend.user.StdStat;
-import com.crs.backend.user.UserNo;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,7 +30,7 @@ public class MaxCreditRepository {
     static final String SEM_ORD = SemesterOrder.SQL;
 
     /** 학부생만. 대학원생(학번 10자리)은 조교로만 쓰므로 학년·졸업·최대학점 대상이 아닙니다(USR-01, V5). */
-    private static final String UNDERGRADUATE = UserNo.undergraduateSql("st.std_no");
+    private static final String UNDERGRADUATE = "CHAR_LENGTH(st.std_no) <> 10";
 
     // 대상 학기 앞의 확정된 신청 내역. 같은 과목을 여러 번 들었으면 가장 최근 시도가 rn = 1
     private static final String HISTORY = """

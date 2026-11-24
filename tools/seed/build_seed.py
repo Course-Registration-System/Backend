@@ -277,8 +277,7 @@ STUDENTS = [
 ST = {s[0]: dict(no=s[0], nm=s[1], dept=s[2], entry=s[3], leave=s[4], load=s[5], ab=s[6]) for s in STUDENTS}
 STILL_ON_LEAVE = {"20230003"}            # 스냅숏 시점에도 휴학 중
 # 대학원생(학번 10자리)은 조교로만 쓴다. 장바구니·신청·최대학점·진급 대상이 아니라 STUDENTS(이수 생성)에 넣지 않는다
-GRADS = [("2026710001", "정대원", 101)]   # 학번, 이름, 학과
-GRAD_TA = GRADS[0][0]
+GRAD_TA = "2026710001"   # 정대원, 학과 101
 TA = [("20240005", CUR, "1020004"), ("20240005", TARGET, "1020001"), (GRAD_TA, TARGET, "1020001")]
 
 # 강제 수강: {학번: {학기: [(과목, 등급, 재수강여부)]}}. 등급 None이면 성적 없음(2027-1)
@@ -840,13 +839,13 @@ def acct(s_):
 accts = [(ADMIN, PWD_HASH, "관리자", "admin@example.ac.kr", "ADMIN", "ACTIVE")]
 accts += [(p, PWD_HASH, nm, f"prof{p}@example.ac.kr", "PROFESSOR", st) for p, nm, _, _, st, _ in PROFS]
 accts += [acct(s_) for s_ in T0_STUDENTS]
-accts += [(g, PWD_HASH, nm, f"{g}@example.ac.kr", "STUDENT", "ACTIVE") for g, nm, _ in GRADS]
+accts.append((GRAD_TA, PWD_HASH, "정대원", f"{GRAD_TA}@example.ac.kr", "STUDENT", "ACTIVE"))
 ACOLS = ["usr_no", "pwd", "usr_nm", "email", "role", "acct_stat"]
 sql.append(insert("user_account", ACOLS, accts))
 sql.append(insert("department", ["dept_no", "dept_nm"], DEPTS))
 sql.append(insert("student", ["std_no", "dept_no", "yr_lvl", "std_stat"],
                   [(s_, ST[s_]["dept"], *yr_stat_t0(s_)) for s_ in T0_STUDENTS]
-                  + [(g, d, 1, "ATTENDING") for g, _, d in GRADS]))
+                  + [(GRAD_TA, 101, 1, "ATTENDING")]))
 sql.append(insert("professor", ["prof_no", "dept_no", "office"], [(p, d, o) for p, _, d, o, _, _ in PROFS]))
 sql.append(insert("administrator", ["emp_no"], [(ADMIN,)]))
 sql.append(insert("semester", ["sem_no", "yr", "sem_type", "cur_sem_yn"],
