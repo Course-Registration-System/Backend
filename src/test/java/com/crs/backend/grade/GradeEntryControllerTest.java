@@ -549,6 +549,17 @@ class GradeEntryControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 반영_비율이_없으면_등급_인원도_정할_수_없다() throws Exception {
+        jdbc.update(
+                "UPDATE lecture SET mid_wt = NULL, fin_wt = NULL, hw_wt = NULL, att_wt = NULL WHERE lec_no = ?",
+                Lecture.DEMO_GRADE);
+
+        counts(Lecture.DEMO_GRADE, "{\"aCnt\":2}")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("WEIGHTS_NOT_SET"));
+    }
+
+    @Test
     void 등급_인원은_조교도_정하고_다른_교수는_403() throws Exception {
         jdbc.update(
                 "INSERT INTO teaching_assistant_assignment (lec_no, std_no) VALUES (?, ?)",

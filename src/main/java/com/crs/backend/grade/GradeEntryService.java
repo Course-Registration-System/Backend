@@ -147,6 +147,7 @@ public class GradeEntryService {
         if (evalMode(lecture, enrolled) != EvalMode.RELATIVE) {
             throw new BusinessException(ErrorCode.GRADE_NOT_RELATIVE);
         }
+        requireWeights(lecture); // 다시 계산할 때 원점수 총점을 반영 비율로 낸다
         GradeBands limits = bands(lecture, enrolled);
         int aCnt = request.aCnt() != null ? request.aCnt() : limits.aLimit();
         int abCnt = request.abCnt() != null ? request.abCnt() : limits.abLimit();
