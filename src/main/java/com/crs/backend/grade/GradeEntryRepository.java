@@ -39,7 +39,8 @@ public class GradeEntryRepository {
             GrdStat grdStat) {}
 
     /**
-     * 수강생 한 명과 저장된 성적. 항목 원점수는 소수 셋째 자리까지(DECIMAL(6,3)), totScr 는 원점수 총점, fnlScr 는 제출 때 계산한 최종점수입니다.
+     * 수강생 한 명과 저장된 성적. 항목 원점수는 소수 셋째 자리까지(DECIMAL(6,3)), totScr 는 원점수 총점, fnlScr 는 최종점수, ltrGrd 는
+     * 등급입니다(P/F 과목은 점수 없이 P·F).
      * 성적 행이 없으면 점수·등급이 모두 null 입니다.
      */
     public record StudentRow(
@@ -154,12 +155,22 @@ public class GradeEntryRepository {
                         .addValue("totScr", totScr));
     }
 
-    /** 강의 전체의 최종점수·등급을 비웁니다. 원점수가 하나라도 바뀌면 순위가 바뀔 수 있어서입니다(원점수 총점은 그대로). */
+    /** P/F 과목 학생 한 명의 등급(P·F, null 은 비움)을 저장합니다. 점수 칸은 모두 비웁니다. */
+    public void savePassFail(int lecNo, String stdNo, String ltrGrd) {
+        jdbc.update("""
+                INSERT INTO grade (std_no, lec_no, ltr_grd) VALUES (:stdNo, :lecNo, :ltrGrd) AS new
+                ON DUPLICATE KEY UPDATE
+                    mid_scr = NULL, fin_scr = NULL, hw_scr = NULL, att_scr = NULL, tot_scr = NULL, fnl_scr = NULL,
+                    ltr_grd = new.ltr_grd
+                """, params(lecNo).addValue("stdNo", stdNo).addValue("ltrGrd", ltrGrd));
+    }
+
+    /** 강의 전체의 최종점수·등급을 비웁니다. 다시 계산하기 전에 부릅니다(원점수 총점은 그대로). */
     public void clearResults(int lecNo) {
         jdbc.update("UPDATE grade SET fnl_scr = NULL, ltr_grd = NULL WHERE lec_no = :lecNo", params(lecNo));
     }
 
-    /** 제출할 때 계산한 학생 한 명의 원점수 총점·최종점수·등급을 저장합니다. */
+    /** 계산한 학생 한 명의 원점수 총점·최종점수·등급을 저장합니다. */
     public void saveResult(int lecNo, String stdNo, int totScr, int fnlScr, String ltrGrd) {
         jdbc.update(
                 """

@@ -6,22 +6,24 @@ SET NAMES utf8mb4;
 
 
 
-UPDATE grade SET mid_scr = 91, fin_scr = 91, hw_scr = 91, att_scr = 91, tot_scr = 91, ltr_grd = 'A-' WHERE std_no = '20260001' AND lec_no = 182 AND ltr_grd IS NULL;
+SET @demo_blank = (SELECT COUNT(*) FROM grade WHERE std_no = '20260001' AND lec_no = 182 AND ltr_grd IS NULL);
 
-INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr, ltr_grd) VALUES
-  ('20240001', 158, 91, 91, 91, 91, 91, 'A-'),
-  ('20240003', 158, 89, 71, 80, 99, 81, 'B-'),
-  ('20240004', 158, 77, 77, 87, 96, 80, 'B-')
+UPDATE grade SET mid_scr = 91, fin_scr = 91, hw_scr = 91, att_scr = 91, tot_scr = 91, fnl_scr = 91, ltr_grd = 'A-' WHERE std_no = '20260001' AND lec_no = 182 AND @demo_blank = 1;
+
+INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr, fnl_scr, ltr_grd) VALUES
+  ('20240001', 158, 91, 91, 91, 91, 91, 91, 'A-'),
+  ('20240003', 158, 89, 71, 80, 99, 81, 81, 'B-'),
+  ('20240004', 158, 77, 77, 87, 96, 80, 80, 'B-')
 ON DUPLICATE KEY UPDATE ltr_grd = ltr_grd;
 
 UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = '90001', cnfm_dtm = '2026-12-28 10:00:00' WHERE sem_no = 9 AND grd_stat <> 'CONFIRMED';
 
-INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr, ltr_grd) VALUES
-  ('20230003', 183, 81, 77, 80, 100, 81, 'B-'),
-  ('20260004', 183, 75, 79, 83, 92, 79, 'C+'),
-  ('20260001', 184, 77, 96, 89, 97, 87, 'B+'),
-  ('20260003', 184, 89, 75, 92, 95, 84, 'B0'),
-  ('20250002', 185, 84, 90, 91, 92, 87, 'B+')
+INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr, fnl_scr, ltr_grd) VALUES
+  ('20230003', 183, 81, 77, 80, 100, 81, 81, 'B-'),
+  ('20260004', 183, 75, 79, 83, 92, 79, 79, 'C+'),
+  ('20260001', 184, 77, 96, 89, 97, 87, 87, 'B+'),
+  ('20260003', 184, 89, 75, 92, 95, 84, 84, 'B0'),
+  ('20250002', 185, 84, 90, 91, 92, 87, 87, 'B+')
 ON DUPLICATE KEY UPDATE ltr_grd = ltr_grd;
 
 UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = '90001', cnfm_dtm = '2027-01-16 17:00:00' WHERE sem_no = 10 AND grd_stat <> 'CONFIRMED';

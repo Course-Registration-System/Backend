@@ -143,7 +143,7 @@ nxt AS (
 SELECT COUNT(*) FROM lecture l JOIN nxt USING (sem_no)
 WHERE l.grd_stat = 'CONFIRMED' AND l.cnfm_dtm >= nxt.cart_start;
 
--- CHECK 등급이 기준표(최종점수, 없으면 총점)와 다름. 최종점수는 GRD-01 제출 때 채우고(상대평가 구간 조정), 시드 행은 비어 있어 총점으로 본다. 재수강만 점수와 관계없이 A- 상한 | 0
+-- CHECK 등급이 기준표(최종점수, 없으면 총점)와 다름. 최종점수는 GRD-01 계산값(상대평가는 구역별 상한, 절대평가는 총점)이고, 비어 있으면 총점으로 본다. 재수강만 점수와 관계없이 A- 상한 | 0
 SELECT COUNT(*) FROM (
   SELECT g.ltr_grd, e.retake_yn, COALESCE(g.fnl_scr, g.tot_scr) AS scr
   FROM grade g
@@ -162,6 +162,41 @@ SELECT COUNT(*) FROM grade g JOIN lecture l USING (lec_no)
 WHERE g.tot_scr IS NOT NULL
   AND (l.mid_wt IS NULL OR g.mid_scr IS NULL OR g.fin_scr IS NULL OR g.hw_scr IS NULL OR g.att_scr IS NULL
        OR g.tot_scr <> FLOOR((g.mid_scr * l.mid_wt + g.fin_scr * l.fin_wt + g.hw_scr * l.hw_wt + g.att_scr * l.att_wt) / 100));
+
+-- CHECK 절대평가 강의의 최종점수가 총점과 다름(최종점수가 있는 행, 재수강은 총점과 93 중 작은 값. 상대평가는 수강인원 10명 이상 등급제, 전공 영어강의·제외 인정 제외) | 0
+WITH rel AS (
+  SELECT l.lec_no FROM lecture l JOIN course c USING (crs_cd)
+  WHERE c.eval_type = 'GRADE' AND l.rel_grd_exmp_yn = 'N'
+    AND NOT (l.eng_lec_yn = 'Y' AND c.cmpl_type IN ('MAJOR_BASIC', 'MAJOR_REQ', 'MAJOR_ELEC'))
+    AND (SELECT COUNT(*) FROM enrollment e WHERE e.lec_no = l.lec_no AND e.enrl_stat = 'ENROLLED') >= 10)
+SELECT COUNT(*) FROM grade g JOIN enrollment e USING (std_no, lec_no)
+WHERE g.fnl_scr IS NOT NULL AND g.lec_no NOT IN (SELECT lec_no FROM rel)
+  AND (g.tot_scr IS NULL OR g.fnl_scr <> IF(e.retake_yn = 'Y', LEAST(g.tot_scr, 93), g.tot_scr));
+
+-- CHECK 재수강 최종점수가 93 초과(GRD-01 재수강은 A- 상한, 최종점수도 93 상한) | 0
+SELECT COUNT(*) FROM grade g JOIN enrollment e USING (std_no, lec_no)
+WHERE e.retake_yn = 'Y' AND g.fnl_scr > 93;
+
+-- CHECK 상대평가 강의에서 원점수 총점이 높은데 최종점수가 낮은 학생 쌍(순서 보존. 재수강 A- 상한으로 깎인 학생은 높은 쪽에서 제외) | 0
+WITH rel AS (
+  SELECT l.lec_no FROM lecture l JOIN course c USING (crs_cd)
+  WHERE c.eval_type = 'GRADE' AND l.rel_grd_exmp_yn = 'N'
+    AND NOT (l.eng_lec_yn = 'Y' AND c.cmpl_type IN ('MAJOR_BASIC', 'MAJOR_REQ', 'MAJOR_ELEC'))
+    AND (SELECT COUNT(*) FROM enrollment e WHERE e.lec_no = l.lec_no AND e.enrl_stat = 'ENROLLED') >= 10),
+s AS (
+  SELECT g.lec_no, e.retake_yn, g.fnl_scr,
+         g.mid_scr * l.mid_wt + g.fin_scr * l.fin_wt + g.hw_scr * l.hw_wt + g.att_scr * l.att_wt AS raw100
+  FROM grade g JOIN lecture l USING (lec_no)
+  JOIN enrollment e ON e.std_no = g.std_no AND e.lec_no = g.lec_no AND e.enrl_stat = 'ENROLLED'
+  WHERE g.lec_no IN (SELECT lec_no FROM rel) AND g.fnl_scr IS NOT NULL)
+SELECT COUNT(*) FROM s a JOIN s b ON a.lec_no = b.lec_no
+WHERE a.retake_yn = 'N' AND a.raw100 > b.raw100 AND a.fnl_scr < b.fnl_scr;
+
+-- CHECK P/F 과목 성적에 점수 있음(P/F 는 항목 점수·총점·최종점수 모두 비움) | 0
+SELECT COUNT(*) FROM grade g JOIN lecture l USING (lec_no) JOIN course c USING (crs_cd)
+WHERE c.eval_type = 'PASS_FAIL'
+  AND (g.mid_scr IS NOT NULL OR g.fin_scr IS NOT NULL OR g.hw_scr IS NOT NULL OR g.att_scr IS NOT NULL
+       OR g.tot_scr IS NOT NULL OR g.fnl_scr IS NOT NULL);
 
 -- CHECK 평가방식과 등급이 맞지 않음(P/F 과목은 P·F만, 등급제 과목에는 P 없음) | 0
 SELECT COUNT(*) FROM grade g JOIN lecture l USING (lec_no) JOIN course c USING (crs_cd)

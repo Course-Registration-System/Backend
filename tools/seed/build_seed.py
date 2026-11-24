@@ -16,6 +16,7 @@
 """
 from pathlib import Path
 from datetime import datetime, timedelta
+from fractions import Fraction
 import itertools
 import math
 import random
@@ -460,56 +461,110 @@ def enroll_time(std, sem, idx):
 def score_grade(lec, ab, forced, retake):
     c = COURSES[lec["cd"]]
     if c["eval"] == "PASS_FAIL":
-        return dict(mid=None, fin=None, hw=None, att=None, tot=None, ltr=forced or "P", base=forced or "P")
+        return dict(mid=None, fin=None, hw=None, att=None, tot=None, fnl=None, ltr=forced or "P", base=forced or "P")
     if forced:
         sc = [MID[forced]] * 4
     else:
         sc = [max(40, min(100, round(rng.gauss(ab, 7)))), max(40, min(100, round(rng.gauss(ab, 7)))),
               max(40, min(100, round(rng.gauss(ab + 5, 5)))), max(60, min(100, round(rng.gauss(97, 3))))]
     tot = math.floor(sum(s * w for s, w in zip(sc, lec["wt"])) / 100)
-    g = grade_of(tot)
+    fnl = min(tot, RETAKE_MAX) if retake == "Y" else tot   # 절대평가: 최종점수 = 총점, 재수강은 93 상한(GRD-01)
+    g = grade_of(fnl)
     if retake == "Y" and better(g, "A-"):
         g = "A-"   # 재수강 상한
-    return dict(mid=sc[0], fin=sc[1], hw=sc[2], att=sc[3], tot=tot, ltr=g, base=g)
+    return dict(mid=sc[0], fin=sc[1], hw=sc[2], att=sc[3], tot=tot, fnl=fnl, ltr=g, base=g)
 
 
-def lower_score(g, letter, wt):
-    """총점이 letter 구간 맨 위가 되도록 항목 점수를 깎고 총점·등급을 다시 낸다(GRD-01: 비율은 점수를 조정해 맞춘다).
-    네 항목에서 같은 점수를 빼면 반영 비율 합이 100이라 총점(소수점 버림)이 정확히 그만큼 내려간다."""
-    i = ORDER.index(letter)
-    top = GRADE_TABLE[i - 1][1] - 1
-    keys = ("mid", "fin", "hw", "att")
-    total = lambda: math.floor(sum(g[k] * w for k, w in zip(keys, wt)) / 100)
-    d = g["tot"] - top
-    if d > 0 and min(g[k] for k in keys) >= d:
-        for k in keys:
-            g[k] -= d
-    while total() > top:
-        g[max(keys, key=lambda k: g[k])] -= 1
-    g["tot"] = total()
-    g["ltr"] = g["base"] = grade_of(g["tot"])
-    assert g["ltr"] == letter, (g, letter)
+# ---------------------------------------------------------------- 상대평가(GRD-01)
+# 항목 점수는 원점수, tot_scr 는 원점수 총점(버림, 모든 등급제), fnl_scr 는 최종점수, 등급 = 기준표(fnl_scr).
+# 상대평가는 원점수 총점(소수 그대로) 석차로 A 구역(⌊n×40%⌋위까지)·B 구역(⌊n×80%⌋위까지)·나머지로 나누고, 구역마다 최종점수
+# 상한만 둔다: A 구역은 버림 총점 그대로, B 구역은 89(B+), 나머지는 79(C+). 점수를 올리지 않으므로 A 는 0명일 수 있다.
+# 교직은 A 구역 ⌊n×50%⌋, 나머지는 89. 같은 원점수 총점인데 구역이 갈려 최종점수가 달라지면 앱이 저장을 막는다.
+# 근거: 업무분석서 GRD-01(교수님 성적 산정 안내). 등급 기준표는 위 GRADE_TABLE(seed-checks.sql '등급이 기준표(최종점수…)'
+# 검사와 같은 표), 평점은 GradePoint.java:14-17 과 같다. 앱 계산은 GradeEntryService.grade.
+SCORE_KEYS = ("mid", "fin", "hw", "att")
+ZONE_MAX = (100, 89, 79)    # 구역별 최종점수 상한(A 구역, B 구역, 나머지)
+RETAKE_MAX = 93             # 재수강 최종점수 상한(A- 구간 안. A+·A0 이면 A-)
 
 
-def relative_fix(lec, rows):
-    """수강인원 10명 이상 상대평가 강의의 등급 비율을 맞춘다(보호 행은 건드리지 않는다).
-    비율을 넘는 학생은 등급만 바꾸지 않고 점수를 낮춰 기준표 등급이 되게 한다(GRD-01)."""
+def is_relative(lec, n):
+    """상대평가 대상: 수강인원(ENROLLED) 10명 이상 등급제. 전공 영어강의·상대평가 제외 인정 강의는 절대평가.
+    seed-checks.sql '상대평가 비율 초과' 검사, GradeEntryService.evalMode 와 같은 조건이다."""
     c = COURSES[lec["cd"]]
+    return (c["eval"] == "GRADE" and n >= 10 and lec["exmp"] == "N"
+            and not (lec["eng"] == "Y" and c["cmpl"] in ("MAJOR_BASIC", "MAJOR_REQ", "MAJOR_ELEC")))
+
+
+def relative_caps(lec, n):
+    """(A 구역 끝, B 구역 끝) 석차 = ⌊n×40%⌋, ⌊n×80%⌋. 교직은 A 구역 ⌊n×50%⌋, 그 아래는 모두 B 구역(89 상한).
+    정수로 계산해 실수 오차가 없다."""
+    if COURSES[lec["cd"]]["cmpl"] == "TEACHING":
+        return n // 2, n
+    return n * 4 // 10, n * 8 // 10
+
+
+def raw_total(g, wt):
+    """원점수 총점 = Σ 항목 × 비율 / 100. 석차용이라 버리지 않고 분수로 정확히 둔다."""
+    return Fraction(sum(g[k] * w for k, w in zip(SCORE_KEYS, wt)), 100)
+
+
+def zone_scores(raws, caps):
+    """높은 순 원점수 총점 raws 의 구역별 최종점수(재수강 상한 전) = min(버림 총점, 구역 상한)."""
+    a_end, ab_end = caps
+    return [min(math.floor(r), ZONE_MAX[0 if i < a_end else 1 if i < ab_end else 2]) for i, r in enumerate(raws)]
+
+
+def boundary_conflicts(raws, caps):
+    """같은 원점수 총점인데 구역이 갈려 최종점수가 달라지는 석차 k(k번째와 k+1번째) 목록. 있으면 앱이 저장을 막는다
+    (GRADE_TIE_AT_BOUNDARY)."""
+    s_ = sorted(raws, reverse=True)
+    z = zone_scores(s_, caps)
+    return [k for k in range(1, len(s_)) if s_[k - 1] == s_[k] and z[k - 1] != z[k]]
+
+
+def relative_results(lec, rows, n):
+    """입력된 학생 rows 의 {id(e): (최종점수, 등급)}. n 은 수강인원(ENROLLED)으로 구역을 정한다. 저장할 때마다 강의 전체를
+    다시 계산하는 앱(GRD-01)과 같게, 아직 원점수가 빈 학생은 rows 에서 빼고 부른다. 항목 점수는 바꾸지 않는다."""
+    caps = relative_caps(lec, n)
+    wt = lec["wt"]
+    ranked = sorted(rows, key=lambda e: raw_total(e["grade"], wt), reverse=True)
+    out = {}
+    for e, z in zip(ranked, zone_scores([raw_total(e["grade"], wt) for e in ranked], caps)):
+        fnl = min(z, RETAKE_MAX) if e["retake"] == "Y" else z
+        out[id(e)] = (fnl, grade_of(fnl))
+    # 생성기 검사: 인원 한도, 순서 보존(재수강 상한 행은 높은 쪽에서 제외), 구역이 갈리는 동점 없음
+    ltrs = [out[id(e)][1] for e in rows]
+    n_a = sum(1 for x in ltrs if x in ("A+", "A0", "A-"))
+    n_ab = sum(1 for x in ltrs if x[0] in "AB")
+    assert n_a <= caps[0] and n_ab <= caps[1], (lec["cd"], n_a, n_ab, caps)
+    for hi_e, lo_e in itertools.combinations(ranked, 2):
+        if hi_e["retake"] == "N" and raw_total(hi_e["grade"], wt) > raw_total(lo_e["grade"], wt):
+            assert out[id(hi_e)][0] >= out[id(lo_e)][0], (lec["cd"], hi_e["std"], lo_e["std"])
+    assert not boundary_conflicts([raw_total(e["grade"], wt) for e in rows], caps), lec["cd"]
+    return out
+
+
+def relative_grade(lec, rows):
+    """상대평가 강의의 최종점수·등급을 원점수 석차로 낸다(모든 학생 입력 후 = 확정 상태).
+    보호 행(시나리오로 고정한 등급)은 등급이 그대로여야 하고, 아니면 생성을 멈춘다."""
     n = len(rows)
-    exempt = (c["eval"] != "GRADE" or n < 10 or lec["exmp"] == "Y"
-              or (lec["eng"] == "Y" and c["cmpl"] in ("MAJOR_BASIC", "MAJOR_REQ", "MAJOR_ELEC")))
-    if exempt:
+    if not is_relative(lec, n):
         return
-    is_a = lambda e: e["grade"]["ltr"] in ("A+", "A0", "A-")
-    is_ab = lambda e: e["grade"]["ltr"][0] in "AB"
-    a_lim = math.floor(n * (0.5 if c["cmpl"] == "TEACHING" else 0.4))
-    ab_lim = n if c["cmpl"] == "TEACHING" else math.floor(n * 0.8)
-    for test, lim, to in ((is_a, a_lim, "B+"), (is_ab, ab_lim, "C+")):
-        hits = sorted([e for e in rows if test(e)], key=lambda e: (e["protect"], e["grade"]["tot"] or 0))
-        while len(hits) > lim:
-            e = hits.pop(0)
-            assert not e["protect"], f"보호 행이 비율을 넘김: {lec['cd']}"
-            lower_score(e["grade"], to, lec["wt"])
+    caps = relative_caps(lec, n)
+    wt = lec["wt"]
+    # 구역이 갈리는 동점은 저장을 막으므로 동점인 학생 하나의 항목 원점수를 1점 내려 경계 아래로 보낸다.
+    # 보호 행은 옮기지 않는다. 옮길 학생이 없으면 next 가 실패해 생성을 멈춘다
+    w_of = dict(zip(SCORE_KEYS, wt))
+    while ties := boundary_conflicts([raw_total(e["grade"], wt) for e in rows], caps):
+        tie = sorted((raw_total(e["grade"], wt) for e in rows), reverse=True)[ties[0] - 1]
+        e = next(e for e in rows if not e["protect"] and raw_total(e["grade"], wt) == tie)
+        e["grade"][max((k for k in SCORE_KEYS if w_of[k] and e["grade"][k] > 0), key=w_of.get)] -= 1
+        e["grade"]["tot"] = math.floor(raw_total(e["grade"], wt))
+    res = relative_results(lec, rows, n)
+    for e in rows:
+        fnl, ltr = res[id(e)]
+        assert not e["protect"] or ltr == e["grade"]["ltr"], f"보호 행 등급이 바뀜: {lec['cd']} {e['std']}"
+        e["grade"].update(fnl=fnl, ltr=ltr, base=ltr)
 
 
 def just_under_4(lecs):
@@ -593,7 +648,7 @@ for sem, y, t in sorted(SEMS, key=lambda x: order_key(x[0])):
                 forced = late
                 e["grade"] = score_grade(lec, ST[e["std"]]["ab"], forced, e["retake"])
             e["protect"] = e.get("protect") or forced is not None
-        relative_fix(lec, rows)
+        relative_grade(lec, rows)
         lec["gstat"] = "CONFIRMED"
         if sem == 10:
             assert rows, f"겨울 강의 수강생 없음: {lec['cd']}"
@@ -782,6 +837,11 @@ WINTER_CNFM = cnfm_dtm(10)
 DEMO_LEC = find_lec(CUR, POPULAR)          # 성적 입력 시연 강의(입력중, 20260001 빈칸)
 DEMO_PROF = DEMO_LEC["prof"]
 PINNED = {RICH}   # 시연 학생의 성적은 시연 강의 하나만 비운다
+DEMO_ROWS = [e for e in ENR if e["lec"] is DEMO_LEC and e["stat"] == "ENROLLED"]
+assert is_relative(DEMO_LEC, len(DEMO_ROWS))
+# T0 에는 RICH 원점수가 비어 있다. 앱은 저장할 때마다 입력된 학생 전체로 다시 계산하므로(GRD-01), T0 값은 RICH 를 뺀
+# 학생으로 계산하고(한도는 수강인원 기준), s1 에서 RICH 를 넣으며 12명으로 다시 계산한 값으로 바꾼다
+DEMO_T0 = relative_results(DEMO_LEC, [e for e in DEMO_ROWS if e["std"] != RICH], len(DEMO_ROWS))
 NOTENT = sorted([l for l in LECTURES if l["sem"] == CUR and l is not DEMO_LEC and COURSES[l["cd"]]["eval"] == "GRADE"
                  and l["wt"] and l["cd"] != "1020004"
                  and 2 <= sum(1 for e in ENR if e["lec"] is l and e["stat"] == "ENROLLED") <= 9
@@ -809,11 +869,13 @@ def t0_gstat(l):
     return "NOT_ENTERED"
 
 
-def grade_row(e, blank=False):
+def grade_row(e, blank=False, t0=False):
+    """t0 이면 시연 강의는 RICH 가 빈 T0 상태의 최종점수·등급을 쓴다."""
     g = e["grade"]
     if blank:
-        return (e["std"], e["lec"]["no"], None, None, None, None, None, None)
-    return (e["std"], e["lec"]["no"], g["mid"], g["fin"], g["hw"], g["att"], g["tot"], g["ltr"])
+        return (e["std"], e["lec"]["no"], None, None, None, None, None, None, None)
+    fnl, ltr = DEMO_T0[id(e)] if t0 and id(e) in DEMO_T0 else (g["fnl"], g["ltr"])
+    return (e["std"], e["lec"]["no"], g["mid"], g["fin"], g["hw"], g["att"], g["tot"], fnl, ltr)
 
 
 def yr_stat_t0(std):
@@ -823,7 +885,7 @@ def yr_stat_t0(std):
 
 T0_STUDENTS = [s_ for s_ in ST if ST[s_]["entry"] <= 2026]
 NEW_STUDENTS = [s_ for s_ in ST if ST[s_]["entry"] == 2027]
-GCOLS = ["std_no", "lec_no", "mid_scr", "fin_scr", "hw_scr", "att_scr", "tot_scr", "ltr_grd"]
+GCOLS = ["std_no", "lec_no", "mid_scr", "fin_scr", "hw_scr", "att_scr", "tot_scr", "fnl_scr", "ltr_grd"]
 
 # ---------------------------------------------------------------- 기본 시드(T0)
 TABLES = ["grade", "enrollment", "course_cart", "teaching_assistant_assignment", "lecture_time_slot", "lecture",
@@ -891,7 +953,7 @@ base_grades = []
 for e in BASE_ENR:
     if not e["grade"] or e["stat"] != "ENROLLED" or e["lec"]["sem"] == 10 or e["lec"] is NOTENT:
         continue
-    base_grades.append(grade_row(e, blank=e["lec"] is DEMO_LEC and e["std"] == RICH))
+    base_grades.append(grade_row(e, blank=e["lec"] is DEMO_LEC and e["std"] == RICH, t0=True))
 sql.append(insert("grade", GCOLS, base_grades))
 OUT_SEED.write_text("\n\n".join(sql) + "\n", encoding="utf-8", newline="\n")
 
@@ -913,8 +975,13 @@ def keep_existing(stmt, key_col):
 
 rich_demo = next(e for e in ENR if e["lec"] is DEMO_LEC and e["std"] == RICH)
 g = rich_demo["grade"]
-s1 = [f"UPDATE grade SET mid_scr = {g['mid']}, fin_scr = {g['fin']}, hw_scr = {g['hw']}, att_scr = {g['att']}, "
-      f"tot_scr = {g['tot']}, ltr_grd = {q(g['ltr'])} WHERE std_no = {q(RICH)} AND lec_no = {DEMO_LEC['no']} AND ltr_grd IS NULL;",
+DEMO_RECALC = [e for e in DEMO_ROWS if e["std"] != RICH and DEMO_T0[id(e)] != (e["grade"]["fnl"], e["grade"]["ltr"])]
+s1 = [f"SET @demo_blank = (SELECT COUNT(*) FROM grade WHERE std_no = {q(RICH)} AND lec_no = {DEMO_LEC['no']} AND ltr_grd IS NULL);",
+      *[f"UPDATE grade SET fnl_scr = {e['grade']['fnl']}, ltr_grd = {q(e['grade']['ltr'])} "
+        f"WHERE std_no = {q(e['std'])} AND lec_no = {DEMO_LEC['no']} AND @demo_blank = 1;" for e in DEMO_RECALC],
+      f"UPDATE grade SET mid_scr = {g['mid']}, fin_scr = {g['fin']}, hw_scr = {g['hw']}, att_scr = {g['att']}, "
+      f"tot_scr = {g['tot']}, fnl_scr = {g['fnl']}, ltr_grd = {q(g['ltr'])} "
+      f"WHERE std_no = {q(RICH)} AND lec_no = {DEMO_LEC['no']} AND @demo_blank = 1;",
       keep_existing(insert("grade", GCOLS, [grade_row(e) for e in ENR if e["lec"] is NOTENT and e["stat"] == "ENROLLED"]),
                     "ltr_grd"),
       f"UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = {q(ADMIN)}, cnfm_dtm = {q(S1_CNFM)} "
@@ -969,13 +1036,14 @@ SUMMER_CHAPEL = find_lec(8, CHAPEL)
 SUMMER_CHAPEL_STD = sorted(e["std"] for e in ENR if e["lec"] is SUMMER_CHAPEL)
 TA_LEC = find_lec(TARGET, "1020001")
 TA_CURRENT_LEC = find_lec(CUR, "1020004")
-DEMO_ROWS = [e for e in ENR if e["lec"] is DEMO_LEC and e["stat"] == "ENROLLED"]
-A_LIMIT = math.floor(len(DEMO_ROWS) * 0.4)
-A_NOW = sum(1 for e in DEMO_ROWS if e["std"] != RICH and e["grade"]["ltr"] in ("A+", "A0", "A-"))
+A_LIMIT, AB_LIMIT = relative_caps(DEMO_LEC, len(DEMO_ROWS))
+A_NOW = sum(1 for v in DEMO_T0.values() if v[1] in ("A+", "A0", "A-"))
 RACERS = sorted({s_ for s_, l_, _ in CART if l_ is ONE_LEFT and s_ in PLAN})   # T1에 신청하는 2학년
 ONLINE_STD = sorted({e["std"] for e in S3_ENR if e["lec"] is ONLINE})
-assert ONLINE_STD and A_NOW < A_LIMIT, (ONLINE_STD, A_NOW, A_LIMIT)
+# 시연 ①: RICH 를 입력하면 A 구역에 들어가 A 가 하나 늘어 한도가 찬다
+assert ONLINE_STD and A_NOW + 1 == A_LIMIT and rich_demo["grade"]["ltr"][0] == "A", (ONLINE_STD, A_NOW, A_LIMIT)
 assert sem_gpa(RICH, CUR) == 4.0
+assert len({rich_demo["grade"][k] for k in SCORE_KEYS}) == 1   # 안내의 "항목 N점씩"
 
 
 # ---------------------------------------------------------------- 테스트 상수
@@ -1060,7 +1128,7 @@ gd = ["# 시드 데이터 안내", "",
       "## 시연 흐름", "",
       "2026-2 성적을 입력·확정하면 그 성적으로 2027-1 최대학점이 정해지고, 그 학점으로 수강신청이 막히거나 허용된다.", "",
       row("순서", "시각", "누가", "무엇을", "데이터"), row(*["---"] * 5),
-      row("① 성적 입력", f"T0 {T0:%Y-%m-%d %H:%M}", f"교수 {DEMO_PROF}", f"{lec_label(DEMO_LEC)}에서 {RICH} 점수 입력(90~93점 → A-) 후 제출", f"A {A_NOW}명 + 1 = 한도 {A_LIMIT}명. A를 더 주면 제출 불가"),
+      row("① 성적 입력", f"T0 {T0:%Y-%m-%d %H:%M}", f"교수 {DEMO_PROF}", f"{lec_label(DEMO_LEC)}에서 {RICH} 원점수 입력(항목 {rich_demo['grade']['mid']}점씩) 후 제출", f"저장하면 12명 석차로 다시 계산: {RICH} A 구역 → 최종점수 {rich_demo['grade']['fnl']}, {rich_demo['grade']['ltr']}. A {A_NOW}명 + 1 = 한도 {A_LIMIT}명"),
       row("② 성적 확정", f"TC {TC:%Y-%m-%d %H:%M}", f"관리자 {ADMIN}", f"시계를 TC로 옮긴 뒤 미입력 강의 {lec_label(NOTENT)} 확인, 2026-2 제출 강의 확정. 확정은 성적 입력 기간({_grade_end:%m-%d %H:%M})이 끝난 뒤에만 되므로 T0 에서는 막힌다", "기본 시드"),
       row("③ 학기 마감", "(TC → T1)", f"관리자 {ADMIN}", "겨울학기 성적 확정, 진급·졸업·복학, 2027-1 최대학점 산정", "`s1_grade_close` 후 앱 기능으로 다시 산정"),
       row("④ 시계 넘김", f"T1 {T1:%Y-%m-%d %H:%M}", "시연 API", "다른 학생들의 장바구니와 4·3학년 신청을 채움", "`s2_enroll_day`"),
@@ -1140,8 +1208,8 @@ gd = ["# 시드 데이터 안내", "",
       row("신청 현황(REG-05)", "T1", f"관리자 {ADMIN}", "장바구니 확인 없이 수동 추가. 2026-2 수동 추가 이력은 20250001"), "",
       "## 모듈 C: 강의 운영·성적", "",
       row("기능", "시점", "대상", "확인할 것"), row(*["---"] * 4),
-      row("성적 입력(GRD-01)", "T0", lec_label(DEMO_LEC), f"입력중, {RICH} 빈칸. 수강생 {len(DEMO_ROWS)}명 → 상대평가(A {A_LIMIT}명, A+B {math.floor(len(DEMO_ROWS) * 0.8)}명 한도)"),
-      row("성적 입력", "T0", lec_label(DEMO_LEC), f"현재 A {A_NOW}명. A 두 명을 더 주면 제출 불가"),
+      row("성적 입력(GRD-01)", "T0", lec_label(DEMO_LEC), f"입력중, {RICH} 빈칸. 수강생 {len(DEMO_ROWS)}명 → 상대평가(A 구역 {A_LIMIT}위, B 구역 {AB_LIMIT}위까지)"),
+      row("성적 입력", "T0", lec_label(DEMO_LEC), f"현재 A {A_NOW}명(입력된 {len(DEMO_T0)}명 석차). 항목 점수·총점(tot_scr)은 원점수, 최종점수(fnl_scr)는 구역 상한(B 구역 89, 나머지 79)만 적용하고 올리지 않음"),
       row("성적 입력", "T0", "2026-2 나머지 강의", "제출 상태. 수정하면 입력중으로"),
       row("성적 확정(GRD-02)", "TC", lec_label(NOTENT), "미입력 강의로 보임"),
       row("성적 확정", "TC", "2026-2 제출 강의", "관리자 확정 → 이후 교수 수정 불가. T0 은 입력 기간 안이라 확정 불가"),

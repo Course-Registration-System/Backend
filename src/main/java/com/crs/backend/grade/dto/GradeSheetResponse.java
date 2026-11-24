@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * 강의별 성적표(GRD-01). editable 은 지금 저장·제출할 수 있는지(성적 입력 기간 안, 확정 전, 폐강 아님)입니다. weights 는 등록 전이면
- * null(P/F 과목도 비율을 씀), bands 는 상대평가 강의의 구간 인원입니다. students 는 수강생(신청상태 '신청')을 학번 순으로 담습니다.
+ * null(P/F 과목은 비율을 쓰지 않음), bands 는 상대평가 강의의 구역(A·B 구역 끝 석차)입니다. students 는 수강생(신청상태 '신청')을 학번 순으로 담습니다.
  */
 public record GradeSheetResponse(
         int lecNo,
