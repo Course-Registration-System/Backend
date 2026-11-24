@@ -69,7 +69,8 @@ public enum ErrorCode {
     ASSISTANT_NOT_ELIGIBLE(HttpStatus.CONFLICT, "비활성 계정이거나 졸업한 학생은 조교로 지정할 수 없습니다."),
     ASSISTANT_IS_ENROLLED(HttpStatus.CONFLICT, "이 강의를 수강하는 학생은 조교가 될 수 없습니다."),
     DUPLICATE_ASSISTANT(HttpStatus.CONFLICT, "이미 이 강의의 조교입니다."),
-    ASSISTANT_NOT_FOUND(HttpStatus.NOT_FOUND, "이 강의의 조교가 아닙니다.");
+    ASSISTANT_NOT_FOUND(HttpStatus.NOT_FOUND, "이 강의의 조교가 아닙니다."),
+    ASSISTANT_LECTURE_FINISHED(HttpStatus.CONFLICT, "성적이 확정된 강의는 조교를 추가·삭제할 수 없습니다.");
 
     private final HttpStatus status;
     private final String message;

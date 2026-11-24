@@ -41,6 +41,7 @@ public class TeachingAssistantService {
         if (lecture.lecStat() == LecStat.CLOSED) {
             throw new BusinessException(ErrorCode.LECTURE_CLOSED);
         }
+        checkNotConfirmed(lecture);
 
         // 학생 확인: 활성 계정이고 졸업생이 아니어야 한다(졸업생은 로그인과 성적 조회만, USR-02). 휴학생은 된다
         StudentStatusRow student = teachingAssistantRepository
@@ -70,7 +71,7 @@ public class TeachingAssistantService {
 
     @Transactional
     public TeachingAssistantListResponse remove(CurrentUser user, int lecNo, String stdNo) {
-        checkProfessor(user, lecNo);
+        checkNotConfirmed(checkProfessor(user, lecNo));
         if (teachingAssistantRepository.delete(lecNo, stdNo) == 0) {
             throw new BusinessException(ErrorCode.ASSISTANT_NOT_FOUND);
         }
@@ -86,6 +87,14 @@ public class TeachingAssistantService {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
         return lecture;
+    }
+
+    // 조교 일(강의계획서 LEC-03, 성적 입력 GRD-01)은 성적이 확정되면 끝난다. 지난 학기라도 확정 전이면 성적 입력이 남아 있어
+    // 학기가 아니라 확정으로 판단한다. 확정 뒤에는 배정 기록이 그 강의의 조교 이력이라 삭제도 막는다
+    private static void checkNotConfirmed(LectureOwnerRow lecture) {
+        if (lecture.gradeConfirmed()) {
+            throw new BusinessException(ErrorCode.ASSISTANT_LECTURE_FINISHED);
+        }
     }
 
     private TeachingAssistantListResponse listOf(int lecNo) {

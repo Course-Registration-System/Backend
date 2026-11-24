@@ -15,6 +15,7 @@ import com.crs.backend.support.IntegrationTest;
 import com.crs.backend.support.SeedFixtures.Account;
 import com.crs.backend.support.SeedFixtures.Lecture;
 import com.crs.backend.support.SeedFixtures.Student;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -31,14 +32,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class TeachingAssistantControllerTest extends IntegrationTest {
 
-    /** 시드: 199번 경영학원론(2027-1)과 227번 음악의이해(2027-1, 폐강)의 담당 교수 */
-    private static final String TA_LECTURE_PROFESSOR = "100003";
-    /** 시드: 183번 데이터리터러시의 수강생이 아닌 재학생(컴퓨터학부 2학년) */
-    private static final String FREE_STUDENT = "20250003";
-    /** 시드: 183번 데이터리터러시의 수강생 */
+    /** 시드: Lecture.DEMO_GRADE 의 수강생이 아닌 재학생(컴퓨터학부 2학년) */
+    private static final String FREE_STUDENT = Student.PASS_FAIL_ONLY;
+    /** 시드: Lecture.DEMO_GRADE 의 수강생 */
     private static final String ENROLLED_STUDENT = Student.DEMO;
-    /** 시드: 183번 데이터리터러시의 다른 수강생 */
-    private static final String OTHER_ENROLLED_STUDENT = "20230002";
 
     @Autowired
     MockMvc mvc;
@@ -49,11 +46,28 @@ class TeachingAssistantControllerTest extends IntegrationTest {
     @Autowired
     JdbcTemplate jdbc;
 
+    /** Lecture.TA_TARGET 과 Lecture.CLOSED 의 담당 교수 */
+    String taLectureProfessor;
+    /** Lecture.DEMO_GRADE 의 다른 수강생 */
+    String otherEnrolledStudent;
+
+    @BeforeEach
+    void setUp() {
+        taLectureProfessor =
+                jdbc.queryForObject("SELECT prof_no FROM lecture WHERE lec_no = ?", String.class, Lecture.TA_TARGET);
+        otherEnrolledStudent = jdbc.queryForObject(
+                "SELECT std_no FROM enrollment WHERE lec_no = ? AND enrl_stat = 'ENROLLED' AND std_no <> ?"
+                        + " ORDER BY std_no LIMIT 1",
+                String.class,
+                Lecture.DEMO_GRADE,
+                ENROLLED_STUDENT);
+    }
+
     // ── 목록 ──
 
     @Test
     void 담당_교수는_조교_목록을_본다() throws Exception {
-        professor(TA_LECTURE_PROFESSOR, get(path(Lecture.TA_TARGET)))
+        professor(taLectureProfessor, get(path(Lecture.TA_TARGET)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lecNo").value(Lecture.TA_TARGET))
                 .andExpect(jsonPath("$.assistants", hasSize(1)))
@@ -76,7 +90,7 @@ class TeachingAssistantControllerTest extends IntegrationTest {
 
     @Test
     void 없는_강의는_404() throws Exception {
-        professor(TA_LECTURE_PROFESSOR, get(path(99999)))
+        professor(taLectureProfessor, get(path(99999)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("LECTURE_NOT_FOUND"));
     }
@@ -105,17 +119,17 @@ class TeachingAssistantControllerTest extends IntegrationTest {
         jdbc.update(
                 "UPDATE enrollment SET enrl_stat = 'CANCELLED', cncl_dtm = '2026-12-21 10:00:00'"
                         + " WHERE std_no = ? AND lec_no = ?",
-                OTHER_ENROLLED_STUDENT,
+                otherEnrolledStudent,
                 Lecture.DEMO_GRADE);
 
-        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, OTHER_ENROLLED_STUDENT)
+        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, otherEnrolledStudent)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.assistants[*].stdNo", contains(OTHER_ENROLLED_STUDENT)));
+                .andExpect(jsonPath("$.assistants[*].stdNo", contains(otherEnrolledStudent)));
     }
 
     @Test
     void 이미_배정된_조교는_409() throws Exception {
-        addAs(TA_LECTURE_PROFESSOR, Lecture.TA_TARGET, Student.TEACHING_ASSISTANT)
+        addAs(taLectureProfessor, Lecture.TA_TARGET, Student.TEACHING_ASSISTANT)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("DUPLICATE_ASSISTANT"));
     }
@@ -125,7 +139,7 @@ class TeachingAssistantControllerTest extends IntegrationTest {
         addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, "99999999")
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
-        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, TA_LECTURE_PROFESSOR)
+        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, taLectureProfessor)
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
     }
@@ -147,18 +161,18 @@ class TeachingAssistantControllerTest extends IntegrationTest {
 
     @Test
     void 휴학생은_조교로_지정할_수_있다() throws Exception {
-        // 20250002 는 T0 에 휴학 중
-        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, "20250002")
+        // T0 에 휴학 중인 학생
+        addAs(Account.DEMO_PROFESSOR, Lecture.DEMO_GRADE, Student.ON_LEAVE)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.assistants[*].stdNo", contains("20250002")));
+                .andExpect(jsonPath("$.assistants[*].stdNo", contains(Student.ON_LEAVE)));
     }
 
     @Test
     void 폐강_강의에는_조교를_추가할_수_없고_목록은_볼_수_있다() throws Exception {
-        addAs(TA_LECTURE_PROFESSOR, Lecture.CLOSED, FREE_STUDENT)
+        addAs(taLectureProfessor, Lecture.CLOSED, FREE_STUDENT)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("LECTURE_CLOSED"));
-        professor(TA_LECTURE_PROFESSOR, get(path(Lecture.CLOSED)))
+        professor(taLectureProfessor, get(path(Lecture.CLOSED)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.assistants", hasSize(0)));
     }
@@ -167,6 +181,43 @@ class TeachingAssistantControllerTest extends IntegrationTest {
     void 조교는_조교를_추가할_수_없다() throws Exception {
         as(Student.TEACHING_ASSISTANT, Role.STUDENT, post(path(Lecture.TA_TARGET)), body(FREE_STUDENT))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void 담당_교수가_아니면_추가와_삭제도_403() throws Exception {
+        String assistant = path(Lecture.TA_TARGET) + "/" + Student.TEACHING_ASSISTANT;
+        as(Account.DEMO_PROFESSOR, Role.PROFESSOR, post(path(Lecture.TA_TARGET)), body(FREE_STUDENT))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+        as(Account.ADMIN, Role.ADMIN, post(path(Lecture.TA_TARGET)), body(FREE_STUDENT))
+                .andExpect(status().isForbidden());
+        as(Account.DEMO_PROFESSOR, Role.PROFESSOR, delete(assistant))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+        as(Account.ADMIN, Role.ADMIN, delete(assistant)).andExpect(status().isForbidden());
+
+        // 거부된 요청은 아무것도 바꾸지 않는다
+        professor(taLectureProfessor, get(path(Lecture.TA_TARGET)))
+                .andExpect(jsonPath("$.assistants[*].stdNo", contains(Student.TEACHING_ASSISTANT)));
+    }
+
+    @Test
+    void 성적이_확정된_강의는_조교를_추가_삭제할_수_없고_목록은_볼_수_있다() throws Exception {
+        jdbc.update(
+                "UPDATE lecture SET grd_stat = 'CONFIRMED', cnfm_emp_no = ?, cnfm_dtm = '2027-06-30 10:00:00'"
+                        + " WHERE lec_no = ?",
+                Account.ADMIN,
+                Lecture.TA_TARGET);
+
+        addAs(taLectureProfessor, Lecture.TA_TARGET, FREE_STUDENT)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ASSISTANT_LECTURE_FINISHED"));
+        professor(taLectureProfessor, delete(path(Lecture.TA_TARGET) + "/" + Student.TEACHING_ASSISTANT))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ASSISTANT_LECTURE_FINISHED"));
+        professor(taLectureProfessor, get(path(Lecture.TA_TARGET)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assistants[*].stdNo", contains(Student.TEACHING_ASSISTANT)));
     }
 
     @Test
@@ -180,10 +231,10 @@ class TeachingAssistantControllerTest extends IntegrationTest {
 
     @Test
     void 담당_교수가_조교를_삭제하면_바뀐_목록을_주고_다시_지우면_404() throws Exception {
-        professor(TA_LECTURE_PROFESSOR, delete(path(Lecture.TA_TARGET) + "/" + Student.TEACHING_ASSISTANT))
+        professor(taLectureProfessor, delete(path(Lecture.TA_TARGET) + "/" + Student.TEACHING_ASSISTANT))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.assistants", hasSize(0)));
-        professor(TA_LECTURE_PROFESSOR, delete(path(Lecture.TA_TARGET) + "/" + Student.TEACHING_ASSISTANT))
+        professor(taLectureProfessor, delete(path(Lecture.TA_TARGET) + "/" + Student.TEACHING_ASSISTANT))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ASSISTANT_NOT_FOUND"));
     }
