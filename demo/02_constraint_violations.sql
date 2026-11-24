@@ -14,9 +14,9 @@ UPDATE semester SET cur_sem_yn = 'Y' WHERE sem_no = 11;
 -- 점수 101
 UPDATE grade SET mid_scr = 101 WHERE std_no = '20240001' AND lec_no = 159;
 
--- 기대: 거부 ck_grade_pf_no_score
--- P/F 과목(사회봉사)에 점수 입력
-UPDATE grade SET mid_scr = 90 WHERE std_no = '20250003' AND lec_no = 172;
+-- 기대: 거부 ck_grade_ltr_grd
+-- 등급표에 없는 등급(P/F 과목도 이제 원점수로 판정해 점수가 있을 수 있어, V5 에서 "P 면 점수 없음" 제약을 지웠다)
+UPDATE grade SET ltr_grd = 'Z' WHERE std_no = '20250003' AND lec_no = 172;
 
 -- 기대: 거부 ck_course_crdt
 -- 학점 5 (0.5~4만 허용)

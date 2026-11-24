@@ -157,5 +157,8 @@ public final class SeedFixtures {
 
         /** TEACHING_ASSISTANT 학생이 조교인 강의 */
         public static final int TA_TARGET = 198;
+
+        /** TEACHING_ASSISTANT 학생이 2026-2 에 조교인 강의 */
+        public static final int TA_CURRENT = 162;
     }
 }

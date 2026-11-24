@@ -71,11 +71,9 @@ public enum ErrorCode {
     GRADE_CONFIRMED(HttpStatus.CONFLICT, "확정된 성적은 고칠 수 없습니다."),
     WEIGHTS_NOT_SET(HttpStatus.CONFLICT, "평가 반영 비율이 등록되지 않았습니다."),
     NOT_ENROLLED_STUDENT(HttpStatus.NOT_FOUND, "이 강의의 수강생이 아닙니다."),
-    GRADE_INPUT_MISMATCH(HttpStatus.BAD_REQUEST, "P/F 과목은 P·F만, 등급제 과목은 점수만 입력합니다."),
-    GRADE_ADJUST_NOT_ALLOWED(HttpStatus.CONFLICT, "등급은 상대평가 강의에서 기준표보다 낮게만 조정할 수 있습니다."),
     GRADE_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 제출한 성적입니다."),
     GRADE_INCOMPLETE(HttpStatus.CONFLICT, "점수가 비어 있는 수강생이 있습니다."),
-    GRADE_RATIO_EXCEEDED(HttpStatus.CONFLICT, "상대평가 등급 비율을 넘었습니다.");
+    GRADE_TIE_AT_BOUNDARY(HttpStatus.CONFLICT, "상대평가 구간 경계에 총점이 같은 학생이 있습니다. 점수를 고쳐 순위를 정해 주세요.");
 
     private final HttpStatus status;
     private final String message;

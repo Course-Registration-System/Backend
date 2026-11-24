@@ -962,6 +962,7 @@ RETAKE_LEC = tl("1010014")
 SUMMER_CHAPEL = find_lec(8, CHAPEL)
 SUMMER_CHAPEL_STD = sorted(e["std"] for e in ENR if e["lec"] is SUMMER_CHAPEL)
 TA_LEC = find_lec(TARGET, "1020001")
+TA_CURRENT_LEC = find_lec(CUR, "1020004")
 DEMO_ROWS = [e for e in ENR if e["lec"] is DEMO_LEC and e["stat"] == "ENROLLED"]
 A_LIMIT = math.floor(len(DEMO_ROWS) * 0.4)
 A_NOW = sum(1 for e in DEMO_ROWS if e["std"] != RICH and e["grade"]["ltr"] in ("A+", "A0", "A-"))
@@ -1035,7 +1036,8 @@ java += jclass("Lecture", "강의번호.", [
     ("RELATIVE_EXEMPT", REL_EXEMPT["no"], "상대평가 제외 인정"),
     ("NO_WEIGHTS", NO_WEIGHTS[0]["no"], "반영비율 미입력"),
     ("RETAKE_TARGET", RETAKE_LEC["no"], "RETAKE 학생이 재수강 신청한 강의"),
-    ("TA_TARGET", TA_LEC["no"], "TEACHING_ASSISTANT 학생이 조교인 강의")])
+    ("TA_TARGET", TA_LEC["no"], "TEACHING_ASSISTANT 학생이 조교인 강의"),
+    ("TA_CURRENT", TA_CURRENT_LEC["no"], "TEACHING_ASSISTANT 학생이 2026-2 에 조교인 강의")])
 java[-1:] = ["}"]
 OUT_FIXTURES.write_text("\n".join(java) + "\n", encoding="utf-8", newline="\n")
 

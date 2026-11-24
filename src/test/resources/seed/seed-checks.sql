@@ -143,15 +143,18 @@ nxt AS (
 SELECT COUNT(*) FROM lecture l JOIN nxt USING (sem_no)
 WHERE l.grd_stat = 'CONFIRMED' AND l.cnfm_dtm >= nxt.cart_start;
 
--- CHECK 등급이 기준표(총점)와 다름. 상대평가 비율은 점수를 조정해 맞추고, 재수강만 총점과 관계없이 A- 상한 | 0
-SELECT COUNT(*) FROM grade g
-JOIN enrollment e ON e.std_no = g.std_no AND e.lec_no = g.lec_no
-WHERE g.tot_scr IS NOT NULL AND g.ltr_grd IS NOT NULL
-  AND g.ltr_grd <> CASE WHEN e.retake_yn = 'Y' AND g.tot_scr >= 90 THEN 'A-'
-                        WHEN g.tot_scr >= 97 THEN 'A+' WHEN g.tot_scr >= 94 THEN 'A0' WHEN g.tot_scr >= 90 THEN 'A-'
-                        WHEN g.tot_scr >= 87 THEN 'B+' WHEN g.tot_scr >= 84 THEN 'B0' WHEN g.tot_scr >= 80 THEN 'B-'
-                        WHEN g.tot_scr >= 77 THEN 'C+' WHEN g.tot_scr >= 74 THEN 'C0' WHEN g.tot_scr >= 70 THEN 'C-'
-                        WHEN g.tot_scr >= 67 THEN 'D+' WHEN g.tot_scr >= 64 THEN 'D0' WHEN g.tot_scr >= 60 THEN 'D-'
+-- CHECK 등급이 기준표(최종점수, 없으면 총점)와 다름. 최종점수는 GRD-01 제출 때 채우고(상대평가 구간 조정), 시드 행은 비어 있어 총점으로 본다. 재수강만 점수와 관계없이 A- 상한 | 0
+SELECT COUNT(*) FROM (
+  SELECT g.ltr_grd, e.retake_yn, COALESCE(g.fnl_scr, g.tot_scr) AS scr
+  FROM grade g
+  JOIN enrollment e ON e.std_no = g.std_no AND e.lec_no = g.lec_no
+  JOIN lecture l ON l.lec_no = g.lec_no JOIN course c ON c.crs_cd = l.crs_cd
+  WHERE c.eval_type = 'GRADE' AND g.tot_scr IS NOT NULL AND g.ltr_grd IS NOT NULL) x
+WHERE x.ltr_grd <> CASE WHEN x.retake_yn = 'Y' AND x.scr >= 90 THEN 'A-'
+                        WHEN x.scr >= 97 THEN 'A+' WHEN x.scr >= 94 THEN 'A0' WHEN x.scr >= 90 THEN 'A-'
+                        WHEN x.scr >= 87 THEN 'B+' WHEN x.scr >= 84 THEN 'B0' WHEN x.scr >= 80 THEN 'B-'
+                        WHEN x.scr >= 77 THEN 'C+' WHEN x.scr >= 74 THEN 'C0' WHEN x.scr >= 70 THEN 'C-'
+                        WHEN x.scr >= 67 THEN 'D+' WHEN x.scr >= 64 THEN 'D0' WHEN x.scr >= 60 THEN 'D-'
                         ELSE 'F' END;
 
 -- CHECK 총점 = 항목 점수 × 반영 비율 합 / 100 (소수점 버림) | 0
