@@ -18,6 +18,9 @@ public final class SeedTime {
     /** 2026-2 성적 입력 기간(기본 시드). */
     public static final String T0 = "2026-12-21T10:00:00";
 
+    /** 2026-2 성적 입력이 끝난 뒤의 성적 확정 시각(GRD-02). 오버레이 없이 기본 시드 그대로. tools/seed/build_seed.py 의 TC 와 같습니다. */
+    public static final String TC = "2026-12-28T10:00:00";
+
     /** 2027-1 2학년 수강신청일. {@link #atT1(DataSource)} 필요. */
     public static final String T1 = "2027-02-11T10:05:00";
 

@@ -44,6 +44,7 @@ public enum ErrorCode {
     NO_REGISTRATION_SEMESTER(HttpStatus.CONFLICT, "지금은 신청 대상 학기가 없습니다."),
     CART_CLOSED(HttpStatus.CONFLICT, "장바구니 기간이 아닙니다."),
     STUDENT_STATUS_NOT_ALLOWED(HttpStatus.FORBIDDEN, "이번 학기에 신청할 수 없는 학적상태입니다."),
+    GRADUATE_STUDENT_NOT_ALLOWED(HttpStatus.FORBIDDEN, "대학원생은 장바구니에 담거나 수강신청할 수 없습니다."),
     OTHER_SEMESTER_LECTURE(HttpStatus.CONFLICT, "신청 대상 학기의 강의가 아닙니다."),
     DUPLICATE_CART(HttpStatus.CONFLICT, "이미 장바구니에 담은 강의입니다."),
     CART_NOT_FOUND(HttpStatus.NOT_FOUND, "장바구니에 없는 강의입니다."),
@@ -71,7 +72,16 @@ public enum ErrorCode {
     PLAN_FILE_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "강의계획서 파일은 10MB 까지 올릴 수 있습니다."),
     WEIGHT_SUM_INVALID(HttpStatus.BAD_REQUEST, "평가 반영 비율의 합은 100이어야 합니다."),
     WEIGHTS_NOT_ALLOWED(HttpStatus.CONFLICT, "P/F 과목은 평가 반영 비율을 입력하지 않습니다."),
-    PLAN_NOT_FOUND(HttpStatus.NOT_FOUND, "강의계획서가 없습니다.");
+    PLAN_NOT_FOUND(HttpStatus.NOT_FOUND, "강의계획서가 없습니다."),
+
+    // 성적 입력 (GRD-01). 강의가 없거나 폐강일 때는 위의 LECTURE_NOT_FOUND·LECTURE_CLOSED 를 같이 씁니다
+    GRADE_PERIOD_CLOSED(HttpStatus.CONFLICT, "성적 입력 기간이 아닙니다."),
+    GRADE_CONFIRMED(HttpStatus.CONFLICT, "확정된 성적은 고칠 수 없습니다."),
+    WEIGHTS_NOT_SET(HttpStatus.CONFLICT, "평가 반영 비율이 등록되지 않았습니다."),
+    NOT_ENROLLED_STUDENT(HttpStatus.NOT_FOUND, "이 강의의 수강생이 아닙니다."),
+    GRADE_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 제출한 성적입니다."),
+    GRADE_INCOMPLETE(HttpStatus.CONFLICT, "점수가 비어 있는 수강생이 있습니다."),
+    GRADE_TIE_AT_BOUNDARY(HttpStatus.CONFLICT, "상대평가 구간 경계에 총점이 같은 학생이 있습니다. 점수를 고쳐 순위를 정해 주세요.");
 
     private final HttpStatus status;
     private final String message;

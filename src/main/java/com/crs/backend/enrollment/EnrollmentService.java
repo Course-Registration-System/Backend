@@ -12,6 +12,7 @@ import com.crs.backend.enrollment.dto.EnrollmentResponse;
 import com.crs.backend.enrollment.dto.EnrollmentStatusResponse;
 import com.crs.backend.grade.GradeQuery;
 import com.crs.backend.lecture.LecStat;
+import com.crs.backend.user.UserNo;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -65,6 +66,10 @@ public class EnrollmentService {
     public EnrollmentResponse enroll(CurrentUser user, int lecNo) {
         String stdNo = requireStudent(user);
         StudentState student = lockStudent(stdNo, ErrorCode.FORBIDDEN);
+        // 대학원생 학년은 다시 계산하지 않는 값이라, 학년별 기간 검사보다 먼저 막는다
+        if (UserNo.isGraduate(stdNo)) {
+            throw new BusinessException(ErrorCode.GRADUATE_STUDENT_NOT_ALLOWED);
+        }
         int semNo = registrationSemester();
         checkStudentPeriod(semNo, student);
         LectureInfo lecture = lockLecture(lecNo);
@@ -141,7 +146,7 @@ public class EnrollmentService {
     /** 처리 내용 ②~⑨. 학생과 강의를 잠근 뒤 부릅니다. 정원이 찼을 때 학생은 막고, 관리자는 정원을 늘립니다. */
     private void register(String stdNo, StudentState student, int lecNo, LectureInfo lecture, ProcType procType) {
         int semNo = lecture.semNo();
-        StudentStatusRule.check(student.stdStat(), enrollmentRepository.isSeasonal(semNo));
+        StudentStatusRule.check(stdNo, student.stdStat(), enrollmentRepository.isSeasonal(semNo));
         if (lecture.lecStat() == LecStat.CLOSED) {
             throw new BusinessException(ErrorCode.LECTURE_CLOSED);
         }
