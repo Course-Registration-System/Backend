@@ -143,7 +143,7 @@ nxt AS (
 SELECT COUNT(*) FROM lecture l JOIN nxt USING (sem_no)
 WHERE l.grd_stat = 'CONFIRMED' AND l.cnfm_dtm >= nxt.cart_start;
 
--- CHECK 등급이 기준표(최종점수, 없으면 총점)와 다름. 최종점수는 GRD-01 계산값(상대평가는 등급군 안 환산, 절대평가는 총점)이고, 비어 있으면 총점으로 본다. 재수강만 점수와 관계없이 A- 상한 | 0
+-- CHECK 등급이 기준표(최종점수, 없으면 총점)와 다름. 최종점수는 GRD-01 계산값(상대평가는 구역별 상한, 절대평가는 총점)이고, 비어 있으면 총점으로 본다. 재수강만 점수와 관계없이 A- 상한 | 0
 SELECT COUNT(*) FROM (
   SELECT g.ltr_grd, e.retake_yn, COALESCE(g.fnl_scr, g.tot_scr) AS scr
   FROM grade g

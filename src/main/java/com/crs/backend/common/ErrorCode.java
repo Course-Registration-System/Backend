@@ -73,9 +73,7 @@ public enum ErrorCode {
     NOT_ENROLLED_STUDENT(HttpStatus.NOT_FOUND, "이 강의의 수강생이 아닙니다."),
     GRADE_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 제출한 성적입니다."),
     GRADE_INCOMPLETE(HttpStatus.CONFLICT, "점수가 비어 있는 수강생이 있습니다."),
-    GRADE_TIE_AT_BOUNDARY(HttpStatus.CONFLICT, "상대평가 구간 경계에 총점이 같은 학생이 있습니다. 점수를 고쳐 순위를 정해 주세요."),
-    GRADE_NOT_RELATIVE(HttpStatus.CONFLICT, "상대평가 강의가 아니라 등급 인원을 정할 수 없습니다."),
-    GRADE_COUNT_OUT_OF_RANGE(HttpStatus.BAD_REQUEST, "A 인원은 0 이상 A 한도 이하, A+B 인원은 A 인원 이상 A+B 한도 이하여야 합니다.");
+    GRADE_TIE_AT_BOUNDARY(HttpStatus.CONFLICT, "상대평가 구간 경계에 총점이 같은 학생이 있습니다. 점수를 고쳐 순위를 정해 주세요.");
 
     private final HttpStatus status;
     private final String message;

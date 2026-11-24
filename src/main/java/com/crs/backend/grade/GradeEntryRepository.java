@@ -14,13 +14,13 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * 성적 입력(GRD-01) SQL. grade 와 lecture 의 성적상태(grd_stat)·등급 인원(a_cnt·ab_cnt)은 이 모듈이 씁니다. enrollment·user_account 는 수강신청·계정 모듈,
+ * 성적 입력(GRD-01) SQL. grade 와 lecture 의 성적상태(grd_stat)는 이 모듈이 씁니다. enrollment·user_account 는 수강신청·계정 모듈,
  * course 는 과목 관리 소관이라 읽기만 합니다.
  */
 @Repository
 public class GradeEntryRepository {
 
-    /** 성적 입력에 필요한 강의 정보. 반영 비율은 등록 전이면 모두 null, 등급 인원은 정하지 않았으면 null(한도까지)입니다. */
+    /** 성적 입력에 필요한 강의 정보. 반영 비율은 등록 전이면 모두 null 입니다. */
     public record LectureRow(
             int lecNo,
             int semNo,
@@ -36,8 +36,6 @@ public class GradeEntryRepository {
             Integer finWt,
             Integer hwWt,
             Integer attWt,
-            Integer aCnt,
-            Integer abCnt,
             GrdStat grdStat) {}
 
     /**
@@ -59,8 +57,7 @@ public class GradeEntryRepository {
 
     private static final String LECTURE_SELECT = """
             SELECT l.lec_no, l.sem_no, l.crs_cd, c.crs_nm, l.sect_no, l.lec_stat, c.eval_type, c.cmpl_type,
-                   l.eng_lec_yn, l.rel_grd_exmp_yn, l.mid_wt, l.fin_wt, l.hw_wt, l.att_wt,
-                   l.a_cnt, l.ab_cnt, l.grd_stat
+                   l.eng_lec_yn, l.rel_grd_exmp_yn, l.mid_wt, l.fin_wt, l.hw_wt, l.att_wt, l.grd_stat
               FROM lecture l
               JOIN course c ON c.crs_cd = l.crs_cd
              WHERE l.lec_no = :lecNo
@@ -81,8 +78,6 @@ public class GradeEntryRepository {
             nullableInt(rs, "fin_wt"),
             nullableInt(rs, "hw_wt"),
             nullableInt(rs, "att_wt"),
-            nullableInt(rs, "a_cnt"),
-            nullableInt(rs, "ab_cnt"),
             GrdStat.valueOf(rs.getString("grd_stat")));
 
     private static final RowMapper<StudentRow> STUDENT = (rs, rowNum) -> new StudentRow(
@@ -168,13 +163,6 @@ public class GradeEntryRepository {
                     mid_scr = NULL, fin_scr = NULL, hw_scr = NULL, att_scr = NULL, tot_scr = NULL, fnl_scr = NULL,
                     ltr_grd = new.ltr_grd
                 """, params(lecNo).addValue("stdNo", stdNo).addValue("ltrGrd", ltrGrd));
-    }
-
-    /** 상대평가 등급 인원을 저장합니다. null 은 한도까지입니다. */
-    public void saveCounts(int lecNo, Integer aCnt, Integer abCnt) {
-        jdbc.update(
-                "UPDATE lecture SET a_cnt = :aCnt, ab_cnt = :abCnt WHERE lec_no = :lecNo",
-                params(lecNo).addValue("aCnt", aCnt).addValue("abCnt", abCnt));
     }
 
     /** 강의 전체의 최종점수·등급을 비웁니다. 다시 계산하기 전에 부릅니다(원점수 총점은 그대로). */

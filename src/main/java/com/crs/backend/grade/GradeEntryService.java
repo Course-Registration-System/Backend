@@ -9,7 +9,6 @@ import com.crs.backend.course.EvalType;
 import com.crs.backend.grade.GradeEntryRepository.LectureRow;
 import com.crs.backend.grade.GradeEntryRepository.StudentRow;
 import com.crs.backend.grade.dto.GradeBands;
-import com.crs.backend.grade.dto.GradeCountRequest;
 import com.crs.backend.grade.dto.GradeInput;
 import com.crs.backend.grade.dto.GradeSaveRequest;
 import com.crs.backend.grade.dto.GradeSheetResponse;
@@ -35,12 +34,14 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <ul>
  *   <li>절대평가: 최종점수 = 원점수 총점(소수점 버림)
- *   <li>상대평가: 원점수 총점(소수 그대로) 석차로 A군(1 ~ A 인원)·B군(~ A+B 인원)·그 외로 나누고, 군 안에서 Max − (First − 원점수 총점) ×
- *       (Max − Min) ÷ (First − Last) 를 반올림(0.5 올림)한 값이 최종점수. A군 100~90, B군 89~80, 그 외는 버림 총점과 79 중 작은 값
+ *   <li>상대평가: 원점수 총점(소수 그대로) 석차로 A 구역(⌊n×40%⌋위까지)·B 구역(⌊n×80%⌋위까지)·나머지로 나누고, 구역마다 상한만 둔다. A 구역은
+ *       버림 총점 그대로, B 구역은 89(B+), 나머지는 79(C+) 를 넘지 않는다. 점수를 올리지 않으므로 A 는 0명일 수 있다. 교직은 A 구역 ⌊n×50%⌋,
+ *       나머지는 89
  *   <li>재수강은 최종점수 93, 등급 A- 상한
  * </ul>
  *
- * <p>근거: 업무분석서 GRD-01, 상대평가 성적 처리 설계안(2026-11-24 합의).
+ * <p>교수·조교는 등급이나 인원을 넣지 않습니다. 등급을 바꾸려면 원점수를 고칩니다. 같은 원점수 총점인데 구역이 갈려 최종점수가 달라지면 저장하지
+ * 않습니다(교수가 원점수로 순위를 정함). 근거: 업무분석서 GRD-01.
  */
 @Service
 public class GradeEntryService {
@@ -49,12 +50,10 @@ public class GradeEntryService {
     /** 상대평가 대상이 되는 최소 수강인원 */
     private static final int RELATIVE_MIN_ENROLLED = 10;
 
-    private static final int A_MIN = 90;
-    private static final int A_MAX = 100;
-    private static final int B_MIN = 80;
-    private static final int B_MAX = 89;
-    /** 상대평가에서 A군·B군 밖 학생의 최종점수 상한 */
-    private static final int OTHER_MAX = 79;
+    /** 상대평가 B 구역 최종점수 상한(B+ 꼭대기) */
+    private static final int B_ZONE_MAX = 89;
+    /** 상대평가 나머지 구역 최종점수 상한(C+ 꼭대기) */
+    private static final int OTHER_ZONE_MAX = 79;
     /** 재수강 최종점수 상한(A- 구간 꼭대기) */
     private static final int RETAKE_MAX = 93;
 
@@ -80,8 +79,8 @@ public class GradeEntryService {
     }
 
     /**
-     * 성적 저장. 넣은 학생만 바뀌며, 한 명이라도 실패하면 아무것도 저장하지 않습니다. 등급제 과목은 원점수만 받고 강의 전체를 다시 계산하며, P/F
-     * 과목은 점수 없이 P·F 만 받습니다. 저장하면 입력중이 됩니다.
+     * 성적 저장. 넣은 학생만 바뀌며, 한 명이라도 실패하면 아무것도 저장하지 않습니다. 등급제 과목은 원점수만 받고 강의 전체를 다시 계산하며(같은
+     * 원점수 총점인데 구역이 갈리면 저장하지 않음), P/F 과목은 점수 없이 P·F 만 받습니다. 저장하면 입력중이 됩니다.
      */
     @Transactional
     public GradeSheetResponse save(CurrentUser user, int lecNo, GradeSaveRequest request) {
@@ -136,32 +135,7 @@ public class GradeEntryService {
         return reload(lecNo);
     }
 
-    /**
-     * 상대평가 등급 인원 저장. A 인원은 0 ~ A 한도, A+B 인원은 A 인원 ~ A+B 한도이고 null 은 한도까지입니다. 저장하면 강의 전체를 다시
-     * 계산하고 입력중이 됩니다.
-     */
-    @Transactional
-    public GradeSheetResponse saveCounts(CurrentUser user, int lecNo, GradeCountRequest request) {
-        LectureRow lecture = lockEditable(user, lecNo);
-        int enrolled = gradeEntryRepository.findStudents(lecNo).size();
-        if (evalMode(lecture, enrolled) != EvalMode.RELATIVE) {
-            throw new BusinessException(ErrorCode.GRADE_NOT_RELATIVE);
-        }
-        requireWeights(lecture); // 다시 계산할 때 원점수 총점을 반영 비율로 낸다
-        GradeBands limits = bands(lecture, enrolled);
-        int aCnt = request.aCnt() != null ? request.aCnt() : limits.aLimit();
-        int abCnt = request.abCnt() != null ? request.abCnt() : limits.abLimit();
-        if (aCnt > limits.aLimit() || abCnt > limits.abLimit() || aCnt > abCnt) {
-            throw new BusinessException(ErrorCode.GRADE_COUNT_OUT_OF_RANGE);
-        }
-
-        gradeEntryRepository.saveCounts(lecNo, request.aCnt(), request.abCnt());
-        recalculate(gradeEntryRepository.findLecture(lecNo).orElseThrow());
-        toEntering(lecture);
-        return reload(lecNo);
-    }
-
-    /** 제출. 모든 수강생이 입력돼 있어야 하고, 상대평가 강의는 군 경계에 원점수 총점이 같은 학생이 없어야 합니다. */
+    /** 제출. 모든 수강생이 입력돼 있어야 합니다. 최종점수·등급은 저장할 때와 같은 계산으로 다시 냅니다. */
     @Transactional
     public GradeSheetResponse submit(CurrentUser user, int lecNo) {
         LectureRow lecture = lockEditable(user, lecNo);
@@ -180,7 +154,7 @@ public class GradeEntryService {
                 throw new BusinessException(ErrorCode.GRADE_INCOMPLETE);
             }
             if (!passFail) {
-                for (Result result : grade(lecture, students, true)) {
+                for (Result result : grade(lecture, students)) {
                     gradeEntryRepository.saveResult(
                             lecNo, result.stdNo(), result.totScr(), result.fnlScr(), result.ltrGrd());
                 }
@@ -200,17 +174,17 @@ public class GradeEntryService {
     // 등급제 강의 전체를 다시 계산한다. 원점수가 빈 학생은 최종점수·등급이 비어 있다
     private void recalculate(LectureRow lecture) {
         gradeEntryRepository.clearResults(lecture.lecNo());
-        for (Result result : grade(lecture, gradeEntryRepository.findStudents(lecture.lecNo()), false)) {
+        for (Result result : grade(lecture, gradeEntryRepository.findStudents(lecture.lecNo()))) {
             gradeEntryRepository.saveResult(
                     lecture.lecNo(), result.stdNo(), result.totScr(), result.fnlScr(), result.ltrGrd());
         }
     }
 
     /**
-     * 원점수가 다 있는 학생의 원점수 총점 → 최종점수 → 등급. 한도와 평가 방식은 수강인원 전체로 정합니다. rejectTie 이면 군 경계 동점을 막고, 아니면
-     * 동점 학생은 학번 순으로 놓고 계산합니다(저장은 되고 제출만 막힘).
+     * 원점수가 다 있는 학생의 원점수 총점 → 최종점수 → 등급. 구역과 평가 방식은 수강인원 전체로 정합니다. 같은 원점수 총점인데 구역이 갈려
+     * 최종점수가 달라지면 GRADE_TIE_AT_BOUNDARY 입니다.
      */
-    private static List<Result> grade(LectureRow lecture, List<StudentRow> students, boolean rejectTie) {
+    private static List<Result> grade(LectureRow lecture, List<StudentRow> students) {
         int enrolled = students.size();
         List<Ranked> ranked = students.stream()
                 .filter(s -> entered(lecture, s))
@@ -219,26 +193,11 @@ public class GradeEntryService {
                 .toList();
 
         int[] fnl = new int[ranked.size()];
-        if (evalMode(lecture, enrolled) == EvalMode.RELATIVE) {
-            GradeBands bands = bands(lecture, enrolled);
-            // 수강인원이 줄어 저장된 인원이 한도를 넘으면 한도까지만 준다
-            int aCnt = Math.min(bands.aCnt() != null ? bands.aCnt() : bands.aLimit(), bands.aLimit());
-            int abCnt =
-                    Math.max(aCnt, Math.min(bands.abCnt() != null ? bands.abCnt() : bands.abLimit(), bands.abLimit()));
-            if (rejectTie) {
-                checkNoTieAtBoundary(ranked, aCnt);
-                checkNoTieAtBoundary(ranked, abCnt);
-            }
-            convert(ranked, 0, aCnt, A_MIN, A_MAX, fnl);
-            convert(ranked, aCnt, abCnt, B_MIN, B_MAX, fnl);
-            for (int i = abCnt; i < ranked.size(); i++) {
-                fnl[i] = Math.min(floor(ranked.get(i).rawTotal()), OTHER_MAX);
-            }
-        } else {
-            for (int i = 0; i < ranked.size(); i++) {
-                fnl[i] = floor(ranked.get(i).rawTotal());
-            }
+        GradeBands bands = evalMode(lecture, enrolled) == EvalMode.RELATIVE ? bands(lecture, enrolled) : null;
+        for (int i = 0; i < ranked.size(); i++) {
+            fnl[i] = Math.min(floor(ranked.get(i).rawTotal()), zoneMax(bands, i));
         }
+        checkNoSplitTie(ranked, fnl);
 
         List<Result> results = new ArrayList<>();
         for (int i = 0; i < ranked.size(); i++) {
@@ -253,51 +212,34 @@ public class GradeEntryService {
         return results;
     }
 
-    /** 석차 from ~ to-1 (0부터) 학생을 한 군으로 보고 군 안 최종점수를 out 에 넣습니다. */
-    private static void convert(List<Ranked> ranked, int from, int to, int min, int max, int[] out) {
-        int end = Math.min(to, ranked.size());
-        if (from >= end) {
-            return;
+    /** 석차 rank(0부터)의 최종점수 상한. 절대평가(bands 가 null)와 A 구역은 상한이 없다(100). 교직은 A 구역 밖이 모두 89 */
+    private static int zoneMax(GradeBands bands, int rank) {
+        if (bands == null || rank < bands.aLimit()) {
+            return 100;
         }
-        BigDecimal first = ranked.get(from).rawTotal();
-        BigDecimal last = ranked.get(end - 1).rawTotal();
-        for (int i = from; i < end; i++) {
-            out[i] = groupScore(ranked.get(i).rawTotal(), first, last, min, max);
+        if (bands.abLimit() == null || rank < bands.abLimit()) {
+            return B_ZONE_MAX;
         }
+        return OTHER_ZONE_MAX;
     }
 
-    /**
-     * 군 안 최종점수 = Round(Max − (First − 원점수 총점) × (Max − Min) ÷ (First − Last)), 0.5 올림. 분자·분모를 그대로 나눠 반올림하므로
-     * 오차가 없습니다. 군이 한 명이거나 First = Last 이면 버림 총점을 Min ~ Max 안으로 맞춥니다.
-     */
-    private static int groupScore(BigDecimal raw, BigDecimal first, BigDecimal last, int min, int max) {
-        if (first.compareTo(last) == 0) {
-            return Math.min(max, Math.max(min, floor(raw)));
+    /** 원점수 총점이 같은 학생은 최종점수도 같아야 한다. 구역 경계에서 갈리면 교수가 원점수로 순위를 정해야 한다(재수강 상한 전 값으로 비교) */
+    private static void checkNoSplitTie(List<Ranked> ranked, int[] fnl) {
+        for (int i = 1; i < ranked.size(); i++) {
+            BigDecimal boundary = ranked.get(i).rawTotal();
+            if (boundary.compareTo(ranked.get(i - 1).rawTotal()) != 0 || fnl[i] == fnl[i - 1]) {
+                continue;
+            }
+            String tied = ranked.stream()
+                    .filter(r -> r.rawTotal().compareTo(boundary) == 0)
+                    .map(r -> r.student().stdNo())
+                    .sorted()
+                    .collect(Collectors.joining(", "));
+            throw new BusinessException(
+                    ErrorCode.GRADE_TIE_AT_BOUNDARY,
+                    ErrorCode.GRADE_TIE_AT_BOUNDARY.message() + " (총점 "
+                            + display(boundary).toPlainString() + ": " + tied + ")");
         }
-        BigDecimal spread = first.subtract(last);
-        BigDecimal numerator = spread.multiply(BigDecimal.valueOf(max))
-                .subtract(first.subtract(raw).multiply(BigDecimal.valueOf(max - min)));
-        return numerator.divide(spread, 0, RoundingMode.HALF_UP).intValueExact();
-    }
-
-    /** 군 경계(limit 번째와 그다음)에 원점수 총점이 같으면 교수가 원점수로 순위를 정해야 한다 */
-    private static void checkNoTieAtBoundary(List<Ranked> ranked, int limit) {
-        if (limit <= 0 || limit >= ranked.size()) {
-            return;
-        }
-        BigDecimal boundary = ranked.get(limit - 1).rawTotal();
-        if (boundary.compareTo(ranked.get(limit).rawTotal()) != 0) {
-            return;
-        }
-        String tied = ranked.stream()
-                .filter(r -> r.rawTotal().compareTo(boundary) == 0)
-                .map(r -> r.student().stdNo())
-                .sorted()
-                .collect(Collectors.joining(", "));
-        throw new BusinessException(
-                ErrorCode.GRADE_TIE_AT_BOUNDARY,
-                ErrorCode.GRADE_TIE_AT_BOUNDARY.message() + " (총점 "
-                        + display(boundary).toPlainString() + ": " + tied + ")");
     }
 
     // 저장·제출 공통: 강의 행 잠금(트랜잭션의 첫 조회) → 404 → 403 → 폐강 → 기간 → 확정
@@ -375,12 +317,12 @@ public class GradeEntryService {
         return EvalMode.RELATIVE;
     }
 
-    /** 등급 인원 한도: A 40%·A+B 80%, 교직은 A 50%·A+B 수강인원. 소수점 아래 버림 */
+    /** 상대평가 구역 끝 석차: A 40%·A+B 80%, 교직은 A 50% 만. 소수점 아래 버림 */
     private static GradeBands bands(LectureRow lecture, int enrolled) {
         if (lecture.cmplType() == CmplType.TEACHING) {
-            return new GradeBands(enrolled, enrolled * 50 / 100, enrolled, lecture.aCnt(), lecture.abCnt());
+            return new GradeBands(enrolled, enrolled * 50 / 100, null);
         }
-        return new GradeBands(enrolled, enrolled * 40 / 100, enrolled * 80 / 100, lecture.aCnt(), lecture.abCnt());
+        return new GradeBands(enrolled, enrolled * 40 / 100, enrolled * 80 / 100);
     }
 
     private GradeSheetResponse reload(int lecNo) {

@@ -8,21 +8,7 @@ SET NAMES utf8mb4;
 
 SET @demo_blank = (SELECT COUNT(*) FROM grade WHERE std_no = '20260001' AND lec_no = 182 AND ltr_grd IS NULL);
 
-UPDATE grade SET fnl_scr = 90, ltr_grd = 'A-' WHERE std_no = '20240001' AND lec_no = 182 AND @demo_blank = 1;
-
-UPDATE grade SET fnl_scr = 86, ltr_grd = 'B0' WHERE std_no = '20240004' AND lec_no = 182 AND @demo_blank = 1;
-
-UPDATE grade SET fnl_scr = 84, ltr_grd = 'B0' WHERE std_no = '20240005' AND lec_no = 182 AND @demo_blank = 1;
-
-UPDATE grade SET fnl_scr = 80, ltr_grd = 'B-' WHERE std_no = '20250001' AND lec_no = 182 AND @demo_blank = 1;
-
-UPDATE grade SET fnl_scr = 89, ltr_grd = 'B+' WHERE std_no = '20260002' AND lec_no = 182 AND @demo_blank = 1;
-
-UPDATE grade SET fnl_scr = 78, ltr_grd = 'C+' WHERE std_no = '20260003' AND lec_no = 182 AND @demo_blank = 1;
-
-UPDATE grade SET fnl_scr = 82, ltr_grd = 'B-' WHERE std_no = '20260004' AND lec_no = 182 AND @demo_blank = 1;
-
-UPDATE grade SET mid_scr = 91, fin_scr = 91, hw_scr = 91, att_scr = 91, tot_scr = 91, fnl_scr = 90, ltr_grd = 'A-' WHERE std_no = '20260001' AND lec_no = 182 AND @demo_blank = 1;
+UPDATE grade SET mid_scr = 91, fin_scr = 91, hw_scr = 91, att_scr = 91, tot_scr = 91, fnl_scr = 91, ltr_grd = 'A-' WHERE std_no = '20260001' AND lec_no = 182 AND @demo_blank = 1;
 
 INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr, fnl_scr, ltr_grd) VALUES
   ('20240001', 158, 91, 91, 91, 91, 91, 91, 'A-'),
