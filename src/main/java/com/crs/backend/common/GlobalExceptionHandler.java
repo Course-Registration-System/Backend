@@ -37,7 +37,10 @@ public class GlobalExceptionHandler {
         return problem(ErrorCode.INVALID_INPUT, ErrorCode.INVALID_INPUT.message());
     }
 
-    /** 업로드 파일이 spring.servlet.multipart.max-file-size 를 넘을 때(강의계획서 LEC-03). 없으면 500 으로 나간다 */
+    /**
+     * 업로드 파일이 spring.servlet.multipart.max-file-size 를 넘을 때. 없으면 500 으로 나간다. 지금 업로드는 강의계획서(LEC-03)뿐이라
+     * PLAN_FILE_TOO_LARGE 를 쓴다. 다른 업로드 API 가 생기면 일반 코드로 나누거나 요청 경로로 구분해야 한다
+     */
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ProblemDetail handleUploadTooLarge(MaxUploadSizeExceededException e) {
         return problem(ErrorCode.PLAN_FILE_TOO_LARGE, ErrorCode.PLAN_FILE_TOO_LARGE.message());

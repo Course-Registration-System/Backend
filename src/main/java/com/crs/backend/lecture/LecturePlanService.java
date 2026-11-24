@@ -65,10 +65,12 @@ public class LecturePlanService {
     /** 계획서 PDF 올리기·교체. 강의당 하나라 같은 경로에 덮어씁니다. */
     @Transactional
     public LecturePlanResponse uploadFile(CurrentUser user, int lecNo, MultipartFile file) {
+        // 404 → 403 → 409(폐강·마감) → 413·400 순서. 크기 한도를 넘는 요청 본문은 서버가 먼저 거절하고(GlobalExceptionHandler),
+        // 여기는 한도를 넘지 않는 설정에서의 두 번째 확인이다
+        PlanRow plan = lockEditable(user, lecNo);
         if (file != null && file.getSize() > MAX_FILE_BYTES) {
             throw new BusinessException(ErrorCode.PLAN_FILE_TOO_LARGE);
         }
-        PlanRow plan = lockEditable(user, lecNo);
         if (file == null || file.isEmpty() || !isPdf(file)) {
             throw new BusinessException(ErrorCode.INVALID_PLAN_FILE);
         }

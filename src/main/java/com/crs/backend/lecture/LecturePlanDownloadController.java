@@ -12,8 +12,11 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 강의계획서 내려받기(LEC-03). 로그인한 사용자 모두 받을 수 있습니다. 강의 검색(REG-01) 응답의 planFile 이 있으면 프론트가 이 경로로
- * 엽니다.
+ * 강의계획서 내려받기(LEC-03). 로그인한 사용자 모두 받을 수 있습니다. 강의 검색(REG-01) 응답의 planFile 이 있으면 프론트가 이 경로를
+ * 부릅니다.
+ *
+ * <p>인증은 다른 API 처럼 {@code Authorization: Bearer} 헤더로만 합니다. {@code <a href>} 나 {@code window.open} 으로 바로 열면
+ * 헤더가 붙지 않아 401 이므로, 프론트는 {@code fetch} 로 헤더를 붙여 받은 뒤 Blob URL 로 열어야 합니다.
  */
 @RestController
 public class LecturePlanDownloadController {
