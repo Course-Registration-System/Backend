@@ -63,18 +63,27 @@ class RuleCheckTest extends IntegrationTest {
         assertRejected(
                 "ck_enrollment_undergraduate",
                 "INSERT INTO enrollment (std_no, lec_no, enrl_stat, enrl_dtm) VALUES (?, ?, 'ENROLLED', '2027-02-15 10:00:00')",
-                Student.GRADUATE_ASSISTANT,
+                Student.TEACHING_ASSISTANT,
                 Lecture.ONE_SEAT_LEFT);
         assertRejected(
                 "ck_course_cart_undergraduate",
                 "INSERT INTO course_cart (std_no, lec_no) VALUES (?, ?)",
-                Student.GRADUATE_ASSISTANT,
+                Student.TEACHING_ASSISTANT,
                 Lecture.ONE_SEAT_LEFT);
         assertRejected(
                 "ck_semester_maximum_credit_undergraduate",
                 "INSERT INTO semester_maximum_credit (std_no, sem_no, max_crdt) VALUES (?, ?, 18)",
-                Student.GRADUATE_ASSISTANT,
+                Student.TEACHING_ASSISTANT,
                 Semester.Y2027_FIRST);
+    }
+
+    @Test
+    void 학부생을_조교로_배정하면_DB가_거부한다() {
+        assertRejected(
+                "ck_teaching_assistant_assignment_graduate",
+                "INSERT INTO teaching_assistant_assignment (lec_no, std_no) VALUES (?, ?)",
+                Lecture.DEMO_GRADE,
+                Student.PASS_FAIL_ONLY);
     }
 
     private void assertRejected(String constraint, String sql, Object... args) {

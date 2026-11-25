@@ -119,18 +119,6 @@ class TeachingStudentControllerTest extends IntegrationTest {
     }
 
     @Test
-    void 그_강의의_수강생인_조교는_403() throws Exception {
-        jdbc.update(
-                "INSERT INTO teaching_assistant_assignment (lec_no, std_no) "
-                        + "SELECT lec_no, std_no FROM enrollment WHERE lec_no = ? AND enrl_stat = 'ENROLLED' LIMIT 1",
-                Lecture.DEMO_GRADE);
-        String enrolledAssistant = jdbc.queryForObject(
-                "SELECT std_no FROM teaching_assistant_assignment WHERE lec_no = ?", String.class, Lecture.DEMO_GRADE);
-
-        as(enrolledAssistant, Role.STUDENT, Lecture.DEMO_GRADE).andExpect(status().isForbidden());
-    }
-
-    @Test
     void 다른_교수_배정되지_않은_학생_관리자는_403() throws Exception {
         String otherProfessor = jdbc.queryForObject(
                 "SELECT MIN(prof_no) FROM professor WHERE prof_no <> ?", String.class, Account.DEMO_PROFESSOR);
