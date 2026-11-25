@@ -2,16 +2,10 @@ package com.crs.backend.grade;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.crs.backend.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
 
-/** 등급 기준표(GRD-01)와, 평점 SQL 식(GradePoint)이 같은 평점을 내는지. */
-class LetterGradeTest extends IntegrationTest {
-
-    @Autowired
-    JdbcTemplate jdbc;
+/** 등급 기준표(GRD-01). DB 없이 도는 단위 테스트입니다. 평점이 SQL 식과 같은지는 {@link GradePointSqlTest} 에서 봅니다. */
+class LetterGradeTest {
 
     @Test
     void 총점_구간의_경계에서_등급이_바뀐다() {
@@ -42,16 +36,5 @@ class LetterGradeTest extends IntegrationTest {
         assertThat(LetterGrade.B_MINUS.isB()).isTrue();
         assertThat(LetterGrade.C_PLUS.isB()).isFalse();
         assertThat(LetterGrade.A_ZERO.isB()).isFalse();
-    }
-
-    @Test
-    void 평점은_GradePoint_SQL_식과_같다() {
-        for (LetterGrade grade : LetterGrade.values()) {
-            Double fromSql = jdbc.queryForObject(
-                    "SELECT " + GradePoint.sql("g.ltr_grd") + " FROM (SELECT ? AS ltr_grd) g",
-                    Double.class,
-                    grade.code());
-            assertThat(fromSql).as(grade.code()).isEqualTo(grade.point());
-        }
     }
 }

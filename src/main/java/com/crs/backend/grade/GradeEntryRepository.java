@@ -38,7 +38,11 @@ public class GradeEntryRepository {
             Integer attWt,
             GrdStat grdStat) {}
 
-    /** 수강생 한 명과 저장된 성적. 항목 점수는 소수 셋째 자리까지(DECIMAL(6,3)), 총점은 정수입니다. 성적 행이 없으면 점수·등급이 모두 null 입니다. */
+    /**
+     * 수강생 한 명과 저장된 성적. 항목 원점수는 소수 셋째 자리까지(DECIMAL(6,3)), totScr 는 원점수 총점, fnlScr 는 최종점수, ltrGrd 는
+     * 등급입니다(P/F 과목은 점수 없이 P·F).
+     * 성적 행이 없으면 점수·등급이 모두 null 입니다.
+     */
     public record StudentRow(
             String stdNo,
             String usrNm,
@@ -48,6 +52,7 @@ public class GradeEntryRepository {
             BigDecimal hwScr,
             BigDecimal attScr,
             Integer totScr,
+            Integer fnlScr,
             String ltrGrd) {}
 
     private static final String LECTURE_SELECT = """
@@ -84,6 +89,7 @@ public class GradeEntryRepository {
             rs.getBigDecimal("hw_scr"),
             rs.getBigDecimal("att_scr"),
             nullableInt(rs, "tot_scr"),
+            nullableInt(rs, "fnl_scr"),
             rs.getString("ltr_grd"));
 
     private final NamedParameterJdbcTemplate jdbc;
@@ -110,7 +116,7 @@ public class GradeEntryRepository {
     public List<StudentRow> findStudents(int lecNo) {
         return jdbc.query("""
                 SELECT e.std_no, u.usr_nm, e.retake_yn,
-                       g.mid_scr, g.fin_scr, g.hw_scr, g.att_scr, g.tot_scr, g.ltr_grd
+                       g.mid_scr, g.fin_scr, g.hw_scr, g.att_scr, g.tot_scr, g.fnl_scr, g.ltr_grd
                   FROM enrollment e
                   JOIN user_account u ON u.usr_no = e.std_no
                   LEFT JOIN grade g ON g.std_no = e.std_no AND g.lec_no = e.lec_no
@@ -120,23 +126,25 @@ public class GradeEntryRepository {
                 """, params(lecNo), STUDENT);
     }
 
-    /** 학생 한 명의 성적을 저장합니다. 행이 없으면 만들고(수강신청은 성적 행을 만들지 않음) 있으면 통째로 바꿉니다. */
-    public void save(
+    /**
+     * 학생 한 명의 원점수와 원점수 총점을 저장합니다. 행이 없으면 만들고(수강신청은 성적 행을 만들지 않음) 있으면 바꿉니다. 총점은 네 항목이
+     * 다 있을 때만 있고 아니면 null 입니다.
+     */
+    public void saveRawScores(
             int lecNo,
             String stdNo,
             BigDecimal midScr,
             BigDecimal finScr,
             BigDecimal hwScr,
             BigDecimal attScr,
-            Integer totScr,
-            String ltrGrd) {
+            Integer totScr) {
         jdbc.update(
                 """
-                INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr, ltr_grd)
-                VALUES (:stdNo, :lecNo, :midScr, :finScr, :hwScr, :attScr, :totScr, :ltrGrd) AS new
+                INSERT INTO grade (std_no, lec_no, mid_scr, fin_scr, hw_scr, att_scr, tot_scr)
+                VALUES (:stdNo, :lecNo, :midScr, :finScr, :hwScr, :attScr, :totScr) AS new
                 ON DUPLICATE KEY UPDATE
                     mid_scr = new.mid_scr, fin_scr = new.fin_scr, hw_scr = new.hw_scr, att_scr = new.att_scr,
-                    tot_scr = new.tot_scr, ltr_grd = new.ltr_grd
+                    tot_scr = new.tot_scr
                 """,
                 params(lecNo)
                         .addValue("stdNo", stdNo)
@@ -144,7 +152,35 @@ public class GradeEntryRepository {
                         .addValue("finScr", finScr)
                         .addValue("hwScr", hwScr)
                         .addValue("attScr", attScr)
+                        .addValue("totScr", totScr));
+    }
+
+    /** P/F 과목 학생 한 명의 등급(P·F, null 은 비움)을 저장합니다. 점수 칸은 모두 비웁니다. */
+    public void savePassFail(int lecNo, String stdNo, String ltrGrd) {
+        jdbc.update("""
+                INSERT INTO grade (std_no, lec_no, ltr_grd) VALUES (:stdNo, :lecNo, :ltrGrd) AS new
+                ON DUPLICATE KEY UPDATE
+                    mid_scr = NULL, fin_scr = NULL, hw_scr = NULL, att_scr = NULL, tot_scr = NULL, fnl_scr = NULL,
+                    ltr_grd = new.ltr_grd
+                """, params(lecNo).addValue("stdNo", stdNo).addValue("ltrGrd", ltrGrd));
+    }
+
+    /** 강의 전체의 최종점수·등급을 비웁니다. 다시 계산하기 전에 부릅니다(원점수 총점은 그대로). */
+    public void clearResults(int lecNo) {
+        jdbc.update("UPDATE grade SET fnl_scr = NULL, ltr_grd = NULL WHERE lec_no = :lecNo", params(lecNo));
+    }
+
+    /** 계산한 학생 한 명의 원점수 총점·최종점수·등급을 저장합니다. */
+    public void saveResult(int lecNo, String stdNo, int totScr, int fnlScr, String ltrGrd) {
+        jdbc.update(
+                """
+                UPDATE grade SET tot_scr = :totScr, fnl_scr = :fnlScr, ltr_grd = :ltrGrd
+                 WHERE lec_no = :lecNo AND std_no = :stdNo
+                """,
+                params(lecNo)
+                        .addValue("stdNo", stdNo)
                         .addValue("totScr", totScr)
+                        .addValue("fnlScr", fnlScr)
                         .addValue("ltrGrd", ltrGrd));
     }
 

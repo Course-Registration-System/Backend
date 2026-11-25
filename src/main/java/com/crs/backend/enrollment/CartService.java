@@ -104,6 +104,6 @@ public class CartService {
 
     private void checkStudentStatus(String stdNo, int semNo) {
         StdStat stat = cartRepository.findStdStat(stdNo).orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN));
-        StudentStatusRule.check(stat, cartRepository.isSeasonal(semNo));
+        StudentStatusRule.check(stdNo, stat, cartRepository.isSeasonal(semNo));
     }
 }

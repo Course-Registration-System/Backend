@@ -8,6 +8,7 @@ import com.crs.backend.common.ErrorCode;
 import com.crs.backend.support.IntegrationTest;
 import com.crs.backend.support.SeedFixtures.Account;
 import com.crs.backend.support.SeedFixtures.Semester;
+import com.crs.backend.support.SeedFixtures.Student;
 import com.crs.backend.support.SeedTime;
 import java.math.BigDecimal;
 import java.util.Map;
@@ -44,6 +45,23 @@ class PromotionTest extends IntegrationTest {
     @BeforeEach
     void setUp() {
         SeedTime.apply(dataSource, SeedTime.S1);
+    }
+
+    @Test
+    void 대학원생은_학년을_다시_계산하지_않고_최대학점을_받지_않는다() {
+        // 대학원생(학번 10자리)은 조교로만 쓴다. 학년은 관리자가 USR-02 에서 정한 값 그대로 둔다
+        jdbc.update("UPDATE student SET yr_lvl = 2 WHERE std_no = ?", Student.GRADUATE_ASSISTANT);
+
+        maxCreditService.calculate(Semester.Y2027_FIRST);
+
+        assertThat(jdbc.queryForObject(
+                        "SELECT yr_lvl FROM student WHERE std_no = ?", Integer.class, Student.GRADUATE_ASSISTANT))
+                .isEqualTo(2);
+        assertThat(jdbc.queryForObject(
+                        "SELECT COUNT(*) FROM semester_maximum_credit WHERE std_no = ?",
+                        Integer.class,
+                        Student.GRADUATE_ASSISTANT))
+                .isZero();
     }
 
     @Test
