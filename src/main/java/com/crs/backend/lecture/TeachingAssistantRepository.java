@@ -1,6 +1,8 @@
 package com.crs.backend.lecture;
 
 import com.crs.backend.lecture.dto.TeachingAssistantItem;
+import com.crs.backend.user.AcctStat;
+import com.crs.backend.user.StdStat;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -17,8 +19,8 @@ public class TeachingAssistantRepository {
     /** 강의의 담당 교수, 강의상태, 성적 확정 여부(성적상태 CONFIRMED). */
     public record LectureOwnerRow(String profNo, LecStat lecStat, boolean gradeConfirmed) {}
 
-    /** 조교 후보 학생의 계정상태(ACTIVE·INACTIVE)와 학적상태(ATTENDING·ON_LEAVE·GRADUATED). */
-    public record StudentStatusRow(String acctStat, String stdStat) {}
+    /** 조교 후보 학생의 계정상태와 학적상태. */
+    public record StudentStatusRow(AcctStat acctStat, StdStat stdStat) {}
 
     private final NamedParameterJdbcTemplate jdbc;
 
@@ -50,7 +52,8 @@ public class TeachingAssistantRepository {
                          WHERE s.std_no = :stdNo AND u.role = 'STUDENT'
                         """,
                         new MapSqlParameterSource("stdNo", stdNo),
-                        (rs, rowNum) -> new StudentStatusRow(rs.getString("acct_stat"), rs.getString("std_stat")))
+                        (rs, rowNum) -> new StudentStatusRow(
+                                AcctStat.valueOf(rs.getString("acct_stat")), StdStat.valueOf(rs.getString("std_stat"))))
                 .stream()
                 .findFirst();
     }

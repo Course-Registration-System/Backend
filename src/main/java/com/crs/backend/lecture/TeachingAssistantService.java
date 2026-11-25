@@ -7,6 +7,8 @@ import com.crs.backend.common.auth.Role;
 import com.crs.backend.lecture.TeachingAssistantRepository.LectureOwnerRow;
 import com.crs.backend.lecture.TeachingAssistantRepository.StudentStatusRow;
 import com.crs.backend.lecture.dto.TeachingAssistantListResponse;
+import com.crs.backend.user.AcctStat;
+import com.crs.backend.user.StdStat;
 import com.crs.backend.user.UserNo;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -18,9 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class TeachingAssistantService {
-
-    private static final String INACTIVE = "INACTIVE";
-    private static final String GRADUATED = "GRADUATED";
 
     private final TeachingAssistantRepository teachingAssistantRepository;
 
@@ -52,7 +51,7 @@ public class TeachingAssistantService {
         if (!UserNo.isGraduate(stdNo)) {
             throw new BusinessException(ErrorCode.ASSISTANT_NOT_GRADUATE);
         }
-        if (INACTIVE.equals(student.acctStat()) || GRADUATED.equals(student.stdStat())) {
+        if (student.acctStat() == AcctStat.INACTIVE || student.stdStat() == StdStat.GRADUATED) {
             throw new BusinessException(ErrorCode.ASSISTANT_NOT_ELIGIBLE);
         }
 
