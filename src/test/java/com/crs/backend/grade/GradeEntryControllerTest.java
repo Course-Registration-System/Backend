@@ -123,19 +123,6 @@ class GradeEntryControllerTest extends IntegrationTest {
     }
 
     @Test
-    void 그_강의의_수강생인_학생은_조교로_배정돼도_403() throws Exception {
-        String enrolledStudent = enrolledStudents(Lecture.DEMO_GRADE).get(0);
-        jdbc.update(
-                "INSERT INTO teaching_assistant_assignment (lec_no, std_no) VALUES (?, ?)",
-                Lecture.DEMO_GRADE,
-                enrolledStudent);
-
-        sheet(enrolledStudent, Role.STUDENT, Lecture.DEMO_GRADE).andExpect(status().isForbidden());
-        save(enrolledStudent, Role.STUDENT, Lecture.DEMO_GRADE, scores(BLANK, 100, 100, 100, 100))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
     void 다른_교수와_관리자는_403_없는_강의는_404_토큰이_없으면_401() throws Exception {
         sheet(otherProfessor(Lecture.DEMO_GRADE), Role.PROFESSOR, Lecture.DEMO_GRADE)
                 .andExpect(status().isForbidden());
@@ -246,12 +233,13 @@ class GradeEntryControllerTest extends IntegrationTest {
 
     @Test
     void 조교도_저장한다() throws Exception {
+        // 조교 배정은 조교 모듈 일이라 테스트에서만 직접 넣는다(대학원생만 배정된다, V8)
         jdbc.update(
                 "INSERT INTO teaching_assistant_assignment (lec_no, std_no) VALUES (?, ?)",
                 Lecture.DEMO_GRADE,
-                Student.ON_LEAVE);
+                Student.TEACHING_ASSISTANT);
 
-        save(Student.ON_LEAVE, Role.STUDENT, Lecture.DEMO_GRADE, scores(BLANK, 80, 80, 80, 80))
+        save(Student.TEACHING_ASSISTANT, Role.STUDENT, Lecture.DEMO_GRADE, scores(BLANK, 80, 80, 80, 80))
                 .andExpect(status().isOk());
     }
 

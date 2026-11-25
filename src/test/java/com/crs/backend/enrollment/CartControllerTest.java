@@ -93,11 +93,11 @@ class CartControllerTest extends IntegrationTest {
     @Test
     void 대학원생은_담을_수_없다() throws Exception {
         // 대학원생(학번 10자리)은 조교로만 쓴다(USR-01)
-        add(Student.GRADUATE_ASSISTANT, Lecture.ONE_SEAT_LEFT)
+        add(Student.TEACHING_ASSISTANT, Lecture.ONE_SEAT_LEFT)
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("GRADUATE_STUDENT_NOT_ALLOWED"));
         // 최대학점 산정 대상이 아니므로 담을 수 있는 학점도 0으로 보인다
-        mvc.perform(get("/api/cart").header(HttpHeaders.AUTHORIZATION, student(Student.GRADUATE_ASSISTANT)))
+        mvc.perform(get("/api/cart").header(HttpHeaders.AUTHORIZATION, student(Student.TEACHING_ASSISTANT)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.maxCredit").value(0));
     }

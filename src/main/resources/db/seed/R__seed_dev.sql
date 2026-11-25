@@ -1053,8 +1053,7 @@ INSERT INTO lecture_time_slot (lec_no, dow, start_tm, end_tm, cls_type, room_cd)
   (227, 'FRI', '11:00', '12:50', 'OFFLINE', '21301');
 
 INSERT INTO teaching_assistant_assignment (lec_no, std_no) VALUES
-  (162, '20240005'),
-  (198, '20240005'),
+  (162, '2026710001'),
   (198, '2026710001');
 
 INSERT INTO enrollment (std_no, lec_no, enrl_stat, retake_yn, proc_type, enrl_dtm, cncl_dtm) VALUES
