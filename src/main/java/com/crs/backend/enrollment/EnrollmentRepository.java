@@ -31,7 +31,8 @@ public class EnrollmentRepository {
             int enrlCnt,
             BigDecimal crdt,
             boolean chapel,
-            boolean passFail) {}
+            boolean passFail,
+            boolean maxCreditExempt) {}
 
     public record Prerequisite(String crsCd, String crsNm, String minGrade, boolean passFail) {}
 
@@ -69,7 +70,8 @@ public class EnrollmentRepository {
         return jdbc
                 .query(
                         """
-                        SELECT l.sem_no, l.crs_cd, l.lec_stat, l.cap, l.enrl_cnt, c.crdt, c.cmpl_type, c.eval_type
+                        SELECT l.sem_no, l.crs_cd, l.lec_stat, l.cap, l.enrl_cnt, c.crdt, c.cmpl_type, c.eval_type,
+                               c.max_crdt_exmp_yn
                           FROM lecture l
                           JOIN course c ON c.crs_cd = l.crs_cd
                          WHERE l.lec_no = ?
@@ -82,7 +84,8 @@ public class EnrollmentRepository {
                                 rs.getInt("enrl_cnt"),
                                 rs.getBigDecimal("crdt"),
                                 "CHAPEL".equals(rs.getString("cmpl_type")),
-                                "PASS_FAIL".equals(rs.getString("eval_type"))),
+                                "PASS_FAIL".equals(rs.getString("eval_type")),
+                                "Y".equals(rs.getString("max_crdt_exmp_yn"))),
                         lecNo)
                 .stream()
                 .findFirst();
@@ -133,14 +136,15 @@ public class EnrollmentRepository {
                 .findFirst();
     }
 
-    /** 이번 학기 신청 학점 합. 채플은 넣지 않습니다. */
+    /** 이번 학기 신청 학점 합. 최대학점과 비교하는 값이라 채플과 최대학점 제외 과목은 넣지 않습니다. */
     public BigDecimal sumCredits(String stdNo, int semNo) {
         return jdbc.queryForObject("""
                 SELECT COALESCE(SUM(c.crdt), 0)
                   FROM enrollment e
                   JOIN lecture l ON l.lec_no = e.lec_no
                   JOIN course c ON c.crs_cd = l.crs_cd
-                 WHERE e.std_no = ? AND e.enrl_stat = 'ENROLLED' AND l.sem_no = ? AND c.cmpl_type <> 'CHAPEL'
+                 WHERE e.std_no = ? AND e.enrl_stat = 'ENROLLED' AND l.sem_no = ?
+                   AND c.cmpl_type <> 'CHAPEL' AND c.max_crdt_exmp_yn = 'N'
                 """, BigDecimal.class, stdNo, semNo);
     }
 

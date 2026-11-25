@@ -212,9 +212,9 @@ public class EnrollmentService {
         return true;
     }
 
-    /** 채플 학점은 최대학점 계산에 넣지 않습니다. */
+    /** 채플과 최대학점 제외 과목(한반도와평화통일 등)은 최대학점 계산에 넣지 않습니다. */
     private void checkCredits(String stdNo, int semNo, LectureInfo lecture) {
-        if (lecture.chapel()) {
+        if (lecture.chapel() || lecture.maxCreditExempt()) {
             return;
         }
         BigDecimal total = enrollmentRepository.sumCredits(stdNo, semNo).add(lecture.crdt());
