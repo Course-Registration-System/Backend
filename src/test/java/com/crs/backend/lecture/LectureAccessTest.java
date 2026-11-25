@@ -23,8 +23,6 @@ class LectureAccessTest extends IntegrationTest {
 
     /** 시드: 성적 입력 시연 강의(183)를 담당하지 않는 교수 */
     private static final String OTHER_PROFESSOR = "100003";
-    /** 시드: 대학원생 조교가 2026-2 에 배정된 강의 */
-    private static final int TA_CURRENT_LECTURE = 162;
 
     @Autowired
     LectureAccess lectureAccess;
@@ -48,7 +46,7 @@ class LectureAccessTest extends IntegrationTest {
     @Test
     void 조교는_학기가_달라도_배정된_강의를_모두_관리할_수_있다() {
         CurrentUser assistant = new CurrentUser(Student.TEACHING_ASSISTANT, Role.STUDENT);
-        assertThat(lectureAccess.canManage(assistant, TA_CURRENT_LECTURE)).isTrue();
+        assertThat(lectureAccess.canManage(assistant, Lecture.TA_CURRENT)).isTrue();
         assertThat(lectureAccess.canManage(assistant, Lecture.TA_TARGET)).isTrue();
     }
 
