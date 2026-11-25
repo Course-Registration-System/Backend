@@ -97,12 +97,12 @@ class EnrollmentControllerTest extends IntegrationTest {
 
     @Test
     void 대학원생은_신청할_수_없다() throws Exception {
-        enroll(Student.GRADUATE_ASSISTANT, COMPILER)
+        enroll(Student.TEACHING_ASSISTANT, COMPILER)
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("GRADUATE_STUDENT_NOT_ALLOWED"));
         // 다른 학년의 신청일에도 기간 안내가 아니라 대학원생 불가를 알린다
         TestClock.at(clock, TestClock.ENROLL_3RD_YEAR);
-        enroll(Student.GRADUATE_ASSISTANT, COMPILER)
+        enroll(Student.TEACHING_ASSISTANT, COMPILER)
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("GRADUATE_STUDENT_NOT_ALLOWED"));
     }

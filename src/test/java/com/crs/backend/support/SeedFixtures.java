@@ -77,11 +77,8 @@ public final class SeedFixtures {
         /** 자료구조 D+ → 데이터베이스(최소 C0) 신청 불가(T2) */
         public static final String PREREQ_NOT_MET = "20240004";
 
-        /** 조교. 2027-1 198번 강의 */
-        public static final String TEACHING_ASSISTANT = "20240005";
-
-        /** 대학원생 조교(학번 10자리). 2027-1 198번 강의. 장바구니·신청·최대학점 대상 아님 */
-        public static final String GRADUATE_ASSISTANT = "2026710001";
+        /** 대학원생 조교(학번 10자리). 2026-2 162번, 2027-1 198번 강의. 장바구니·신청·최대학점 대상 아님 */
+        public static final String TEACHING_ASSISTANT = "2026710001";
 
         /** 2026-2 관리자 수동 추가 1건. 3학년이라 T1 에 신청 불가 */
         public static final String ADMIN_ADDED = "20250001";
