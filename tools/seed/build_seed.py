@@ -100,6 +100,11 @@ CHAPEL = "1030001"
 POPULAR = "1030018"
 COURSES[POPULAR] = dict(cd=POPULAR, dept=103, nm="데이터리터러시", crdt=3, cmpl="GEN_ELEC", eval="GRADE", rcmd=None,
                         term="NEW")
+# 최대학점 제외 과목(ACA-01). 졸업 학점에는 들어가지만 최대학점과 비교하는 신청 학점 합계에서만 뺀다.
+# 과목 목록에만 두고 강의는 열지 않는다(term NONE). 강의를 열면 난수 흐름이 바뀌어 다른 시드 데이터가 달라진다
+PEACE = "1030019"
+COURSES[PEACE] = dict(cd=PEACE, dept=103, nm="한반도와평화통일", crdt=1, cmpl="GEN_REQ", eval="GRADE", rcmd=1,
+                      term="NONE", max_exmp="Y")
 PREREQS = [("1010007", "1010001", "D-"),   # 자료구조 ← 프로그래밍기초
            ("1010013", "1010007", "D-"),   # 알고리즘 ← 자료구조
            ("1010014", "1010007", "C0"),   # 데이터베이스 ← 자료구조(C0 이상)
@@ -370,13 +375,35 @@ def gpa_over(std, sems):
     return sum(c * p for c, p in rows) / sum(c for c, _ in rows)
 
 
-def max_credit_regular(std, sem):
-    """마지막으로 다닌 정규학기 평점 4.0 이상이면 21. 2학년 1학기(다닌 정규학기 2개)는 1학년 두 학기 평균으로 본다."""
+def taken_credits(std, sem):
+    """그 학기 최종 신청 학점(성적 확정 강의). 채플과 최대학점 제외 과목은 빼고 F도 센다."""
+    return sum(COURSES[e["lec"]["cd"]]["crdt"] for e in ENR
+               if e["std"] == std and e["lec"]["sem"] == sem and e["stat"] == "ENROLLED"
+               and e["lec"].get("gstat") == "CONFIRMED" and e["lec"]["cd"] != CHAPEL
+               and COURSES[e["lec"]["cd"]].get("max_exmp") != "Y")
+
+
+def gpa_bonus(std, sem):
+    """직전 정규학기 평점 4.0 이상인가. 2학년 1학기(다닌 정규학기 2개)는 1학년 두 학기를 합친 평점으로 본다."""
     att = attended_regular(std, sem)
     if not att:
-        return 18
+        return False
     g = gpa_over(std, att) if len(att) == 2 else sem_gpa(std, att[-1])
-    return 21 if g is not None and g >= 4.0 else 18
+    return g is not None and g >= 4.0
+
+
+def max_credit_regular(std, sem):
+    """학년(다닌 정규학기 2개)에 38학점(ACA-01). 1학년: 첫 학기 22, 두 번째 학기 38 − 첫 학기 수강 학점(상한 22), 평점 가산 없음.
+    2학년 이상: 첫 학기 19, 두 번째 학기 19 + 남긴 학점(19 − 첫 학기 수강 학점, 0 미만이면 0), 평점 4.0 이상 +3, 상한 24.
+    학년의 첫·두 번째 학기는 다닌 정규학기 수의 홀짝으로 정한다(휴학해도 마지막으로 다닌 학기가 학년 첫 학기면 이월)."""
+    att = attended_regular(std, sem)
+    n = len(att)
+    if n == 0:
+        return 22
+    if n == 1:
+        return min(22, math.floor(38 - taken_credits(std, att[-1])))
+    carry = max(0, math.floor(19 - taken_credits(std, att[-1]))) if n % 2 == 1 else 0
+    return min(24, 19 + carry + (3 if gpa_bonus(std, sem) else 0))
 
 
 def yr_level(std, sem):
@@ -612,7 +639,7 @@ for sem, y, t in sorted(SEMS, key=lambda x: order_key(x[0])):
                 continue
             mx = max_credit_regular(std, sem)
             MAXC[(std, sem)] = mx
-            load = 21 if (std == "20230001" and mx == 21) else ST[std]["load"]
+            load = 21 if (std == "20230001" and gpa_bonus(std, sem)) else ST[std]["load"]
             chosen = choose(std, sem, mx, load)
             lvl = yr_level(std, sem)
             enrolls = sem != TARGET or lvl in (4, 3)          # 2027-1은 4·3학년만 신청 끝남
@@ -720,8 +747,8 @@ def pick(std, cond):
     return next((l for l in TARGET_LECS if cond(l)), None)
 
 
-RICH = "20260001"   # 2026-2 평점 4.0 → 최대 21. 계획 18학점 + 3학점을 더 담아 21학점까지 신청된다
-assert MAXC[(RICH, TARGET)] == 21 and RICH in PLAN, (MAXC.get((RICH, TARGET)), RICH in PLAN)
+RICH = "20260001"   # 2학년 1학기, 1학년 통산 평점 4.0 → 최대 19 + 3 = 22. 계획 18학점 + 3학점을 더 담아 21학점까지 신청된다
+assert MAXC[(RICH, TARGET)] == 22 and RICH in PLAN, (MAXC.get((RICH, TARGET)), RICH in PLAN)
 RICH_EXTRA = pick(RICH, lambda l: extra_ok(RICH, l) and not any(overlap(l["slot"], m["slot"]) for m in PLAN[RICH])
                   and credit_excl_chapel(PLAN[RICH] + [l]) <= 21)
 OVERMAX, OVERLAP, PREREQ = None, None, None
@@ -761,10 +788,11 @@ assert any(e["lec"]["sem"] == 8 and e["lec"]["cd"] == CHAPEL for e in ENR)  # �
 assert sem_gpa("20240001", CUR) == 4.0
 g2 = sem_gpa("20240002", CUR)
 assert 3.95 <= g2 < 4.0, g2
-assert MAXC[("20240001", TARGET)] == 21 and MAXC[("20240002", TARGET)] == 18
-assert MAXC[("20250002", TARGET)] == 21     # 복학생: 2학년 1학기라 1학년(2025) 평점 4.3
+assert MAXC[("20240001", TARGET)] == 22 and MAXC[("20240002", TARGET)] == 19   # 4학년 1학기: 19, 평점 4.0 이상 +3
+assert MAXC[("20250002", TARGET)] == 22     # 복학생: 2학년 1학기라 1학년(2025) 통산 평점 4.3 → 19 + 3
 assert gpa_over("20250002", [5, 6]) == 4.3
-assert MAXC[("20250003", TARGET)] == 18     # 직전 학기 P/F만
+assert MAXC[("20250003", TARGET)] == 19     # 직전 학기 P/F만이라 평점 없음 → 가산 없음
+assert MAXC[("20270001", TARGET)] == 22     # 신입생: 1학년 첫 학기 22
 assert ("20230001", TARGET) not in MAXC and ("20230003", TARGET) not in MAXC
 assert MAXC[("20230003", 10)] == 3 and MAXC[("20260001", 10)] == 6
 assert any(e["std"] == "20230003" and e["lec"]["sem"] == 10 for e in ENR)   # 휴학생 계절 수강
@@ -918,8 +946,10 @@ sql.append(insert("administrator", ["emp_no"], [(ADMIN,)]))
 sql.append(insert("semester", ["sem_no", "yr", "sem_type", "cur_sem_yn"],
                   [(s_, y, t, "Y" if s_ == CUR else "N") for s_, y, t in SEMS]))
 sql.append(insert("classroom", ["room_cd", "room_nm"], ROOMS))
-sql.append(insert("course", ["crs_cd", "dept_no", "crs_nm", "crdt", "cmpl_type", "eval_type", "rcmd_yr_lvl"],
-                  [(c["cd"], c["dept"], c["nm"], c["crdt"], c["cmpl"], c["eval"], c["rcmd"]) for c in COURSES.values()]))
+sql.append(insert("course", ["crs_cd", "dept_no", "crs_nm", "crdt", "cmpl_type", "eval_type", "rcmd_yr_lvl",
+                             "max_crdt_exmp_yn"],
+                  [(c["cd"], c["dept"], c["nm"], c["crdt"], c["cmpl"], c["eval"], c["rcmd"], c.get("max_exmp", "N"))
+                   for c in COURSES.values()]))
 sql.append(insert("prerequisite_course", ["crs_cd", "prereq_crs_cd", "min_req_grd"], PREREQS))
 srows, n = [], 0
 SCHD_NO = {}
@@ -1074,13 +1104,13 @@ java += jclass("Account", "학생이 아닌 계정.", [
     ("DEMO_PROFESSOR", DEMO_PROF, "성적 입력 시연 강의의 교수"),
     ("PROFESSOR_INACTIVE", "100006", "퇴직 교수(INACTIVE). 로그인 차단")])
 java += jclass("Student", "학번.", [
-    ("DEMO", RICH, "시연 학생. 2026-1 전부 A-, 2026-2 시연 강의 점수만 빈칸, 나머지 A-. A-를 넣으면 1학년 평점 4.0 → 2027-1 최대학점 21"),
-    ("GPA_EXACTLY_4", "20240001", "2026-2 평점 4.0 → 최대학점 21"),
-    ("GPA_JUST_UNDER_4", "20240002", "2026-2 평점 4.0 미만 → 최대학점 18. 신청 취소 이력"),
-    ("PASS_FAIL_ONLY", "20250003", "2026-2 P/F 과목만 → 평점 없음 → 최대학점 18"),
+    ("DEMO", RICH, "시연 학생. 2026-1 전부 A-, 2026-2 시연 강의 점수만 빈칸, 나머지 A-. A-를 넣으면 1학년 통산 평점 4.0 → 2027-1(2학년 1학기) 최대학점 19 + 3 = 22"),
+    ("GPA_EXACTLY_4", "20240001", "2026-2 평점 4.0 → 2027-1(4학년 1학기) 최대학점 19 + 3 = 22"),
+    ("GPA_JUST_UNDER_4", "20240002", "2026-2 평점 4.0 미만 → 최대학점 19. 신청 취소 이력"),
+    ("PASS_FAIL_ONLY", "20250003", "2026-2 P/F 과목만 → 평점 없음 → 최대학점 19"),
     ("GRADUATING", "20230001", "s1 에서 졸업 처리(정규 8학기, 채플 뺀 130학점 이상, 채플 P 6학기 이상)"),
     ("ON_LEAVE", "20230003", "휴학생. 2027-1 최대학점 없음"),
-    ("RETURNING", "20250002", "T0 휴학 → s1 에서 복학. 2학년 1학기라 1학년(2025) 평점 4.3 → 최대학점 21"),
+    ("RETURNING", "20250002", "T0 휴학 → s1 에서 복학. 2학년 1학기라 1학년(2025) 통산 평점 4.3 → 최대학점 19 + 3 = 22"),
     ("FRESHMAN", "20270001", "2027 신입생. s1 에서 계정 생성"),
     ("RETAKE", "20240003", "재수강 이력(F → A- 상한). 2027-1 데이터베이스 재수강 신청"),
     ("PREREQ_NOT_MET", "20240004", "자료구조 D+ → 데이터베이스(최소 C0) 신청 불가(T2)"),
@@ -1134,7 +1164,7 @@ gd = ["# 시드 데이터 안내", "",
       row("⑤ 수강신청", "T1", f"학생 {RICH}", f"장바구니 {plan_cr(RICH)}학점 + {RICH_EXTRA['no']}번 {crd(RICH_EXTRA)}학점 = 21학점 신청 성공. {FULL['no']}번은 정원 마감으로 차단", "s2 이후"),
       row("⑥ 차단 사례", "T1", "학생 여럿", "아래 모듈 B 표의 T1 사례", "s2 이후"),
       row("⑦ 데이터 제어", "T1", "root·app·readonly", "`demo/` SQL", "s2 이후"), "",
-      "①에서 89점 이하(B+)를 넣으면 평점이 4.0 아래가 되어 ③의 최대학점이 18이 되고, ⑤에서 21학점 신청이 막힌다. `s1_grade_close` 는 최대학점을 미리 계산해 둔 값(21)으로 넣으므로 이 대비를 보이려면 s1 을 넣은 뒤 앱으로 2027-1 최대학점을 다시 산정한다(다시 산정하면 그 학기 값을 지우고 새로 계산한다). 2027-1 산정은 겨울학기 성적까지 확정돼야 하므로 s1 없이 T0 에서 바로 실행하면 `GRADES_NOT_CONFIRMED` 로 막힌다.", "",
+      "①에서 89점 이하(B+)를 넣으면 평점이 4.0 아래가 되어 ③의 최대학점이 19가 되고, ⑤에서 21학점 신청이 막힌다. `s1_grade_close` 는 최대학점을 미리 계산해 둔 값(22)으로 넣으므로 이 대비를 보이려면 s1 을 넣은 뒤 앱으로 2027-1 최대학점을 다시 산정한다(다시 산정하면 그 학기 값을 지우고 새로 계산한다). 2027-1 산정은 겨울학기 성적까지 확정돼야 하므로 s1 없이 T0 에서 바로 실행하면 `GRADES_NOT_CONFIRMED` 로 막힌다.", "",
       "## 시점과 오버레이", "",
       row("시점", "시각", "열린 기간", "적용할 오버레이"), row(*["---"] * 4),
       row("T0", f"{T0:%Y-%m-%d %H:%M}", "2026-2 성적 입력, 2026 겨울 정정", "없음(기본 시드)"),
@@ -1174,9 +1204,9 @@ gd = ["# 시드 데이터 안내", "",
                      for s_ in ("20230001", "20230002")) + " → 졸업 / 학점 부족으로 재학 유지"),
       row("채플(계절학기)", "T0", f"2026 여름 {lec_label(SUMMER_CHAPEL)}: {', '.join(SUMMER_CHAPEL_STD)}",
           "계절학기에 받은 채플 P도 졸업 요건(채플 P 6학기)에 셈. 채플은 학기마다 신청하고 재수강이 아님"),
-      row("최대학점 산정", "T0 → s1", f"{RICH} / 20240001 / 20240002", "21 / 21 / 18 (4.0 경계)"),
-      row("최대학점 산정", "T0 → s1", "20250002", "복학생: 2학년 1학기라 1학년(2025) 두 학기 평점 4.3 기준 21"),
-      row("최대학점 산정", "T0 → s1", "20250003", "직전 학기 평점 없음 → 18"),
+      row("최대학점 산정", "T0 → s1", f"{RICH} / 20240001 / 20240002", "22 / 22 / 19 (4.0 경계, 19 + 3)"),
+      row("최대학점 산정", "T0 → s1", "20250002", "복학생: 2학년 1학기라 1학년(2025) 두 학기 평점 4.3 기준 22"),
+      row("최대학점 산정", "T0 → s1", "20250003", "직전 학기 평점 없음 → 가산 없이 19"),
       row("최대학점 산정", "T0 → s1", "20230001 / 20230003", "졸업생·휴학생은 2027-1 정규학기 최대학점 없음"),
       row("강의 검색(REG-01)", "T1", lec_label(FULL), "잔여 0"),
       row("강의 검색", "T1", lec_label(ONE_LEFT), "잔여 1"),
@@ -1193,7 +1223,7 @@ gd = ["# 시드 데이터 안내", "",
       row("계정 관리(USR-02)", "T0", "20250002", "휴학 → 복학 처리"),
       row("강의 개설(ACA-03)", "T0", lec_label(NO_ROOM), "강의실 미배정 대면 강의. 강의실은 정정 시작 전까지 배정, 시간은 수강신청 시작 전까지 변경"),
       row("강의 개설", "T0", lec_label(CLOSED), "폐강 강의"),
-      row("수강신청(REG-03)", "T1", f"{RICH} → 장바구니 전체", f"{plan_cr(RICH)} + {crd(RICH_EXTRA)} = 21학점, 최대 21 → 성공(단 {FULL['no']}번은 정원 마감)"),
+      row("수강신청(REG-03)", "T1", f"{RICH} → 장바구니 전체", f"{plan_cr(RICH)} + {crd(RICH_EXTRA)} = 21학점, 최대 22 → 성공(단 {FULL['no']}번은 정원 마감)"),
       row("수강신청", "T1", f"{', '.join(RACERS)} → {ONE_LEFT['no']}번", "남은 한 자리(동시 신청 실험)"),
       row("수강신청", "T1", f"{OVERMAX[0]} → 장바구니 전체", f"{OVERMAX[2]:g} + {crd(OVERMAX[1])}학점 > 최대 {MAXC[(OVERMAX[0], TARGET)]} → {OVERMAX[1]['no']}번 차단"),
       row("수강신청", "T1", f"{OVERLAP[0]} → {OVERLAP[1]['no']}번", f"장바구니의 {OVERLAP[2]['no']}번과 시간 겹침 → 둘 중 나중 것 차단"),

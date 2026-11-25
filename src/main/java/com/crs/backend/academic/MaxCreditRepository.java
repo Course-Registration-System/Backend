@@ -57,16 +57,17 @@ public class MaxCreditRepository {
              GROUP BY std_no
             """.formatted(HISTORY);
 
-    // 최대학점을 정할 평점의 등급제 과목 학점 합과 학점×평점 합. 평점 = pts / crd
-    // 마지막으로 다닌 정규학기(D1) 하나를 본다. 다닌 정규학기가 2개(2학년 1학기)면 1학년 두 학기를 합쳐 학점 가중 평균을 낸다
-    private static final String LAST_REGULAR_GPA = """
+    // 정규학기 최대학점을 정할 값. 학생별 다닌 정규학기 수(term_cnt), 마지막으로 다닌 정규학기의 수강 학점(last_crdt: 채플과 최대학점
+    // 제외 과목은 빼고 F는 센다), 평점의 등급제 과목 학점 합(crd)과 학점×평점 합(pts). 평점 = pts / crd
+    // 평점은 마지막으로 다닌 정규학기(D1) 하나를 본다. 다닌 정규학기가 2개(2학년 1학기)면 1학년 두 학기를 합쳐 학점 가중 평균을 낸다
+    private static final String REGULAR_BASIS = """
             WITH reg AS (
-                SELECT e.std_no, %s AS sem_ord, c.crdt, c.eval_type, g.ltr_grd
+                SELECT e.std_no, %s AS sem_ord, c.crdt, c.eval_type, c.cmpl_type, c.max_crdt_exmp_yn, g.ltr_grd
                   FROM enrollment e
                   JOIN lecture l ON l.lec_no = e.lec_no
                   JOIN semester s ON s.sem_no = l.sem_no
                   JOIN course c ON c.crs_cd = l.crs_cd
-                  JOIN grade g ON g.std_no = e.std_no AND g.lec_no = e.lec_no
+                  LEFT JOIN grade g ON g.std_no = e.std_no AND g.lec_no = e.lec_no
                  WHERE e.enrl_stat = 'ENROLLED'
                    AND l.grd_stat = 'CONFIRMED'
                    AND s.sem_type IN ('FIRST', 'SECOND')
@@ -74,13 +75,16 @@ public class MaxCreditRepository {
             ), terms AS (
                 SELECT std_no, MAX(sem_ord) AS last_ord, COUNT(DISTINCT sem_ord) AS term_cnt FROM reg GROUP BY std_no
             )
-            SELECT r.std_no,
-                   SUM(CASE WHEN r.eval_type = 'GRADE' THEN r.crdt END) AS crd,
-                   SUM(CASE WHEN r.eval_type = 'GRADE' THEN r.crdt * (%s) END) AS pts
+            SELECT r.std_no, t.term_cnt,
+                   SUM(CASE WHEN r.sem_ord = t.last_ord AND r.cmpl_type <> 'CHAPEL' AND r.max_crdt_exmp_yn = 'N'
+                            THEN r.crdt ELSE 0 END) AS last_crdt,
+                   SUM(CASE WHEN (t.term_cnt = 2 OR r.sem_ord = t.last_ord) AND r.eval_type = 'GRADE'
+                                 AND r.ltr_grd IS NOT NULL THEN r.crdt END) AS crd,
+                   SUM(CASE WHEN (t.term_cnt = 2 OR r.sem_ord = t.last_ord) AND r.eval_type = 'GRADE'
+                                 AND r.ltr_grd IS NOT NULL THEN r.crdt * (%s) END) AS pts
               FROM reg r
               JOIN terms t ON t.std_no = r.std_no
-             WHERE t.term_cnt = 2 OR r.sem_ord = t.last_ord
-             GROUP BY r.std_no
+             GROUP BY r.std_no, t.term_cnt
             """.formatted(SEM_ORD, SEM_ORD, GradePoint.sql("r.ltr_grd"));
 
     private final NamedParameterJdbcTemplate jdbc;
@@ -160,20 +164,45 @@ public class MaxCreditRepository {
     }
 
     /**
-     * 정규학기 최대학점. 재학 중인 학부생 전원, 마지막으로 다닌 정규학기 평점(2학년 1학기는 1학년 두 학기 평균)이 4.0 이상이면 21, 아니면 18(성적·평점
-     * 없음 포함, D3). 평점은 나누지 않고 학점×평점 합 ≥ 4.0×학점 합으로 비교해 반올림 오차를 없앱니다(D4). 계절학기 성적은 보지 않습니다.
+     * 정규학기 최대학점. 재학 중인 학부생 전원을 학년(다닌 정규학기 2개) 38학점 규칙으로 정합니다(ACA-01, #51).
+     *
+     * <ul>
+     *   <li>1학년: 첫 학기 22, 두 번째 학기는 38 − 첫 학기 수강 학점(상한 22). 평점 가산은 없습니다.
+     *   <li>2학년 이상: 첫 학기 19, 두 번째 학기는 19 + 남긴 학점(19 − 첫 학기 수강 학점, 0 미만이면 0). 직전 정규학기 평점이 4.0 이상이면
+     *       +3(2학년 1학기는 1학년 두 학기 통산). 상한 24.
+     * </ul>
+     *
+     * <p>학년의 첫·두 번째 학기는 연도가 아니라 다닌 정규학기 수의 홀짝으로 정합니다. 그래서 휴학해도 마지막으로 다닌 학기가 학년 첫 학기였을
+     * 때만 복학 학기에 남긴 학점이 넘어갑니다. 수강 학점은 성적이 확정된 신청 강의의 학점 합이며 채플과 최대학점 제외 과목은 빼고 F는 셉니다.
+     * 0.5 단위 학점으로 소수가 나오면 버립니다. 평점은 나누지 않고 학점×평점 합 ≥ 4.0×학점 합으로 비교해 반올림 오차를 없앱니다(D4). 계절학기
+     * 성적은 보지 않습니다.
      */
     public void insertRegular(int semNo, int targetOrd) {
         jdbc.update(
                 """
                 INSERT INTO semester_maximum_credit (std_no, sem_no, max_crdt)
                 SELECT st.std_no, :semNo,
-                       CASE WHEN p.crd > 0 AND p.pts >= 4.0 * p.crd THEN 21 ELSE 18 END
+                       CASE
+                         WHEN b.term_cnt IS NULL THEN %d
+                         WHEN b.term_cnt = 1 THEN LEAST(%d, FLOOR(%d - b.last_crdt))
+                         ELSE LEAST(%d, %d
+                              + CASE WHEN b.term_cnt %% 2 = 1 THEN GREATEST(0, FLOOR(%d - b.last_crdt)) ELSE 0 END
+                              + CASE WHEN b.crd > 0 AND b.pts >= 4.0 * b.crd THEN %d ELSE 0 END)
+                       END
                   FROM student st
-                  LEFT JOIN (%s) p ON p.std_no = st.std_no
+                  LEFT JOIN (%s) b ON b.std_no = st.std_no
                  WHERE st.std_stat = 'ATTENDING'
                    AND %s
-                """.formatted(LAST_REGULAR_GPA, UNDERGRADUATE),
+                """.formatted(
+                                MaxCreditRule.FIRST_YEAR_TERM,
+                                MaxCreditRule.FIRST_YEAR_TERM,
+                                MaxCreditRule.YEAR_TOTAL,
+                                MaxCreditRule.TERM_CAP,
+                                MaxCreditRule.BASE_TERM,
+                                MaxCreditRule.BASE_TERM,
+                                MaxCreditRule.GPA_BONUS,
+                                REGULAR_BASIS,
+                                UNDERGRADUATE),
                 new MapSqlParameterSource("semNo", semNo).addValue("targetOrd", targetOrd));
     }
 
@@ -188,7 +217,7 @@ public class MaxCreditRepository {
                 """.formatted(UNDERGRADUATE), new MapSqlParameterSource("semNo", semNo));
     }
 
-    /** 최대학점별 학생 수. 예: {18=12, 21=3} */
+    /** 최대학점별 학생 수. 예: {19=11, 22=4} */
     public Map<Integer, Integer> countByMaxCredit(int semNo) {
         Map<Integer, Integer> counts = new TreeMap<>();
         jdbc.query(

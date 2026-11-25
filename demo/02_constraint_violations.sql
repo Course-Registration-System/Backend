@@ -35,8 +35,8 @@ UPDATE lecture_time_slot SET room_cd = '21301' WHERE lec_no = 221;
 UPDATE lecture_time_slot SET room_cd = '99999' WHERE lec_no = 224;
 
 -- 기대: 거부 ck_semester_maximum_credit_max_crdt_value
--- 최대학점 20 (정규 18·21, 계절 6·3만 허용)
-UPDATE semester_maximum_credit SET max_crdt = 20 WHERE std_no = '20260001' AND sem_no = 11;
+-- 최대학점 25 (학기 상한 24를 넘음. 0~24만 허용)
+UPDATE semester_maximum_credit SET max_crdt = 25 WHERE std_no = '20260001' AND sem_no = 11;
 
 -- 기대: 거부 ck_academic_schedule_period_order
 -- 종료가 시작보다 빠른 일정

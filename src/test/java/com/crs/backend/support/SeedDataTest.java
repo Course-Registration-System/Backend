@@ -40,7 +40,7 @@ class SeedDataTest extends IntegrationTest {
                 Integer.class,
                 SeedFixtures.Student.DEMO,
                 SeedFixtures.Semester.Y2027_FIRST);
-        assertThat(max).isEqualTo(21);
+        assertThat(max).isEqualTo(22);
     }
 
     @Test
