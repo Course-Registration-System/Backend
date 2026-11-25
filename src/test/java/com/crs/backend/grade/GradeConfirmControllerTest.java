@@ -16,6 +16,7 @@ import com.crs.backend.support.IntegrationTest;
 import com.crs.backend.support.SeedFixtures.Account;
 import com.crs.backend.support.SeedFixtures.Lecture;
 import com.crs.backend.support.SeedFixtures.Semester;
+import com.crs.backend.support.SeedTime;
 import com.crs.backend.support.TestClock;
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -42,8 +43,8 @@ class GradeConfirmControllerTest extends IntegrationTest {
     private static final String PATH = "/api/admin/grades";
     /** 2026-2 성적 입력 기간의 끝 */
     private static final String GRADE_END = "2026-12-23T18:00:00";
-    /** 성적 입력 기간이 끝난 뒤 */
-    private static final String AFTER_GRADE_END = "2026-12-24T10:00:00";
+    /** 성적 입력 기간이 끝난 뒤. 시연 흐름 ② 성적 확정 시각(docs/seed-data.md) */
+    private static final String AFTER_GRADE_END = SeedTime.TC;
 
     @Autowired
     MockMvc mvc;
@@ -210,7 +211,7 @@ class GradeConfirmControllerTest extends IntegrationTest {
         confirm(Lecture.DEMO_GRADE)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("GRADE_NOT_SUBMITTED"))
-                .andExpect(jsonPath("$.detail").value("제출되지 않은 성적은 확정할 수 없습니다. (강의번호 182)"));
+                .andExpect(jsonPath("$.detail").value("제출되지 않은 성적은 확정할 수 없습니다. (강의번호 " + Lecture.DEMO_GRADE + ")"));
     }
 
     @Test
