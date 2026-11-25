@@ -157,5 +157,8 @@ public final class SeedFixtures {
 
         /** TEACHING_ASSISTANT 학생이 2026-2 에 조교인 강의 */
         public static final int TA_CURRENT = 162;
+
+        /** 2027-1, 시연 교수(DEMO_PROFESSOR) 담당, 점수제, 계획서 경로·반영비율 있음(파일은 없음). T0 에 계획서를 고칠 수 있다 */
+        public static final int PLAN_EDITABLE = 187;
     }
 }

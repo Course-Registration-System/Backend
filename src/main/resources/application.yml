@@ -18,14 +18,25 @@ spring:
     user: migrator
     password: ${MIGRATOR_DB_PASSWORD}
     locations: classpath:db/migration,classpath:db/seed
+  # 강의계획서 PDF 업로드(LEC-03) 크기 한도. 넘으면 413 PLAN_FILE_TOO_LARGE
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
 
 server:
   port: ${SERVER_PORT:8080}
+  tomcat:
+    # 업로드 한도(11MB)를 넘어 거절한 요청도 본문을 끝까지 읽고 413 을 보낸다. 기본값(2MB)이면 연결을 끊어 클라이언트가 413 을 못 받는다
+    max-swallow-size: 12MB
 
 crs:
   clock:
     # 서버 시작 시 앱의 현재 시각. 기본값은 시드 기준 시각 T0. 비우면 실제 시각을 씁니다. 시점 목록은 docs/seed-data.md
     fixed-at: ${CLOCK_FIXED_AT:2026-12-21T10:00:00}
+  plan:
+    # 강의계획서 PDF 를 두는 폴더(LEC-03). 그 아래 plans/{학기번호}/{과목코드}-{분반}.pdf 로 저장하고 DB 에는 상대 경로만 둡니다
+    dir: ${PLAN_DIR:./data}
   jwt:
     # 토큰 서명 키. base64 로 32바이트 이상(.env 의 JWT_SECRET)
     secret: ${JWT_SECRET}

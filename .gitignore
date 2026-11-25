@@ -43,3 +43,6 @@ Thumbs.db
 *.log
 logs/
 __pycache__/
+
+# 강의계획서 업로드 파일(crs.plan.dir 기본값)
+data/
