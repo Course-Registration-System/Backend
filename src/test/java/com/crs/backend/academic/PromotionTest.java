@@ -147,9 +147,9 @@ class PromotionTest extends IntegrationTest {
 
     @Test
     void 채플_학점은_졸업_이수_학점에_넣지_않는다() {
-        // 등급제 128학점 + 1.5학점 = 129.5, 채플 6학기 3학점을 더하면 132.5지만 졸업하지 않는다
+        // 등급제 128학점 + 1학점 = 129, 채플 6학기 3학점을 더하면 132지만 졸업하지 않는다
         History s = regularSemesters("29990001", 8, "A0");
-        s.take(9, "1.5", "GEN_ELEC", "GRADE", "A0");
+        s.take(9, "1.0", "GEN_ELEC", "GRADE", "A0");
         chapels(s, 6);
 
         maxCreditService.calculate(Semester.Y2027_FIRST);
@@ -208,13 +208,14 @@ class PromotionTest extends IntegrationTest {
         prior(exactly4, 5, 6, 7);
         exactly4.take(9, "3.0", "MAJOR_ELEC", "GRADE", "A-");
         exactly4.take(9, "3.0", "MAJOR_ELEC", "GRADE", "A-");
-        // 3.5학점 A- 7과목 + 0.5학점 B+ = (98 + 1.75) / 25 = 3.99
+        // 4학점 A- 12과목 + 1학점 A- + 1학점 B+ = (196 + 3.5) / 50 = 3.99
         History under4 = new History("29990002");
         prior(under4, 5, 6, 7);
-        for (int i = 0; i < 7; i++) {
-            under4.take(9, "3.5", "MAJOR_ELEC", "GRADE", "A-");
+        for (int i = 0; i < 12; i++) {
+            under4.take(9, "4.0", "MAJOR_ELEC", "GRADE", "A-");
         }
-        under4.take(9, "0.5", "MAJOR_ELEC", "GRADE", "B+");
+        under4.take(9, "1.0", "MAJOR_ELEC", "GRADE", "A-");
+        under4.take(9, "1.0", "MAJOR_ELEC", "GRADE", "B+");
 
         maxCreditService.calculate(Semester.Y2027_FIRST);
 
@@ -349,17 +350,12 @@ class PromotionTest extends IntegrationTest {
         History bonusUsed = new History("29990003");
         prior(bonusUsed, 6, 7);
         take(bonusUsed, 9, 5, "2.0", "A-");
-        // 17.5학점이면 남긴 학점 1.5 중 소수는 버린다 → 19 + 1 = 20
-        History half = new History("29990004");
-        prior(half, 6, 7);
-        take(half, 9, 4, "1.5", "B+");
 
         maxCreditService.calculate(Semester.Y2027_FIRST);
 
         assertThat(rest.maxCredit()).isEqualTo(23);
         assertThat(restHigh.maxCredit()).isEqualTo(24);
         assertThat(bonusUsed.maxCredit()).isEqualTo(22);
-        assertThat(half.maxCredit()).isEqualTo(20);
     }
 
     @Test

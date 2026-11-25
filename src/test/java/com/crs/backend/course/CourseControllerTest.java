@@ -166,14 +166,17 @@ class CourseControllerTest extends IntegrationTest {
     }
 
     @Test
-    void 채플이_아니면_05학점_PF_도_된다() throws Exception {
+    void 채플이_아니면_소수_학점은_400_정수면_PF_도_된다() throws Exception {
         perform(post("/api/admin/courses"), newCourse(NEW_CODE, "0.5", "FREE_ELEC", "PASS_FAIL"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+        perform(post("/api/admin/courses"), newCourse(NEW_CODE, "1", "FREE_ELEC", "PASS_FAIL"))
                 .andExpect(status().isCreated());
     }
 
     @Test
-    void 학점이_범위_밖이거나_05_단위가_아니면_400() throws Exception {
-        for (String crdt : new String[] {"0", "4.5", "2.3"}) {
+    void 학점이_범위_밖이거나_정수가_아니면_400() throws Exception {
+        for (String crdt : new String[] {"0", "4.5", "2.3", "1.5"}) {
             perform(post("/api/admin/courses"), newCourse(NEW_CODE, crdt, "MAJOR_ELEC", null))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("INVALID_INPUT"));

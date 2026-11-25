@@ -11,3 +11,10 @@ ALTER TABLE semester_maximum_credit
 ALTER TABLE course
   ADD COLUMN max_crdt_exmp_yn CHAR(1) NOT NULL DEFAULT 'N' COMMENT '최대학점제외여부: Y(예), N(아니오)',
   ADD CONSTRAINT ck_course_max_crdt_exmp_yn CHECK (max_crdt_exmp_yn IN ('Y', 'N'));
+
+-- 과목 학점은 정수(1~4)이고 0.5학점은 채플에만 있다(ACA-02). 0.5 단위를 허용하던 ck_course_crdt_step 을 바꾼다.
+-- 채플 학점은 ck_course_chapel 이 0.5로 묶는다. 그래서 채플을 뺀 신청 학점 합(최대학점 비교)은 늘 정수다
+ALTER TABLE course
+  DROP CHECK ck_course_crdt_step;
+ALTER TABLE course
+  ADD CONSTRAINT ck_course_crdt_integer CHECK (cmpl_type = 'CHAPEL' OR crdt = FLOOR(crdt));

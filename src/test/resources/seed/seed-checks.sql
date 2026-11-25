@@ -297,8 +297,8 @@ basis AS (
 expect AS (
   SELECT st.std_no,
          CASE WHEN b.cnt IS NULL THEN 22
-              WHEN b.cnt = 1 THEN LEAST(22, FLOOR(38 - b.last_crdt))
-              ELSE LEAST(24, 19 + IF(b.cnt % 2 = 1, GREATEST(0, FLOOR(19 - b.last_crdt)), 0)
+              WHEN b.cnt = 1 THEN LEAST(22, 38 - b.last_crdt)
+              ELSE LEAST(24, 19 + IF(b.cnt % 2 = 1, GREATEST(0, 19 - b.last_crdt), 0)
                                  + IF(b.gpa >= 4.0, 3, 0)) END AS mx
   FROM student st LEFT JOIN basis b ON b.std_no = st.std_no
   WHERE st.std_stat = 'ATTENDING' AND CHAR_LENGTH(st.std_no) <> 10)

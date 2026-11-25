@@ -19,7 +19,7 @@ UPDATE grade SET mid_scr = 101 WHERE std_no = '20240001' AND lec_no = 159;
 UPDATE grade SET ltr_grd = 'Z' WHERE std_no = '20250003' AND lec_no = 172;
 
 -- 기대: 거부 ck_course_crdt
--- 학점 5 (0.5~4만 허용)
+-- 학점 5 (1~4 정수, 채플만 0.5)
 UPDATE course SET crdt = 5 WHERE crs_cd = '1010014';
 
 -- 기대: 거부 ck_lecture_weight_sum

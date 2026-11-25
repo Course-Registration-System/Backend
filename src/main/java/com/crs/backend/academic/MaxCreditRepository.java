@@ -174,7 +174,7 @@ public class MaxCreditRepository {
      *
      * <p>학년의 첫·두 번째 학기는 연도가 아니라 다닌 정규학기 수의 홀짝으로 정합니다. 그래서 휴학해도 마지막으로 다닌 학기가 학년 첫 학기였을
      * 때만 복학 학기에 남긴 학점이 넘어갑니다. 수강 학점은 성적이 확정된 신청 강의의 학점 합이며 채플과 최대학점 제외 과목은 빼고 F는 셉니다.
-     * 0.5 단위 학점으로 소수가 나오면 버립니다. 평점은 나누지 않고 학점×평점 합 ≥ 4.0×학점 합으로 비교해 반올림 오차를 없앱니다(D4). 계절학기
+     * 채플(0.5)을 빼면 과목 학점이 모두 정수라(ck_course_crdt_integer) 수강 학점과 최대학점도 정수입니다. 평점은 나누지 않고 학점×평점 합 ≥ 4.0×학점 합으로 비교해 반올림 오차를 없앱니다(D4). 계절학기
      * 성적은 보지 않습니다.
      */
     public void insertRegular(int semNo, int targetOrd) {
@@ -184,9 +184,9 @@ public class MaxCreditRepository {
                 SELECT st.std_no, :semNo,
                        CASE
                          WHEN b.term_cnt IS NULL THEN %d
-                         WHEN b.term_cnt = 1 THEN LEAST(%d, FLOOR(%d - b.last_crdt))
+                         WHEN b.term_cnt = 1 THEN LEAST(%d, %d - b.last_crdt)
                          ELSE LEAST(%d, %d
-                              + CASE WHEN b.term_cnt %% 2 = 1 THEN GREATEST(0, FLOOR(%d - b.last_crdt)) ELSE 0 END
+                              + CASE WHEN b.term_cnt %% 2 = 1 THEN GREATEST(0, %d - b.last_crdt) ELSE 0 END
                               + CASE WHEN b.crd > 0 AND b.pts >= 4.0 * b.crd THEN %d ELSE 0 END)
                        END
                   FROM student st

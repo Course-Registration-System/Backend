@@ -376,11 +376,11 @@ def gpa_over(std, sems):
 
 
 def taken_credits(std, sem):
-    """그 학기 최종 신청 학점(성적 확정 강의). 채플과 최대학점 제외 과목은 빼고 F도 센다."""
-    return sum(COURSES[e["lec"]["cd"]]["crdt"] for e in ENR
+    """그 학기 최종 신청 학점(성적 확정 강의). 채플과 최대학점 제외 과목은 빼고 F도 센다. 채플 말고는 학점이 정수라 합도 정수다."""
+    return int(sum(COURSES[e["lec"]["cd"]]["crdt"] for e in ENR
                if e["std"] == std and e["lec"]["sem"] == sem and e["stat"] == "ENROLLED"
                and e["lec"].get("gstat") == "CONFIRMED" and e["lec"]["cd"] != CHAPEL
-               and COURSES[e["lec"]["cd"]].get("max_exmp") != "Y")
+               and COURSES[e["lec"]["cd"]].get("max_exmp") != "Y"))
 
 
 def gpa_bonus(std, sem):
@@ -401,8 +401,8 @@ def max_credit_regular(std, sem):
     if n == 0:
         return 22
     if n == 1:
-        return min(22, math.floor(38 - taken_credits(std, att[-1])))
-    carry = max(0, math.floor(19 - taken_credits(std, att[-1]))) if n % 2 == 1 else 0
+        return min(22, 38 - taken_credits(std, att[-1]))
+    carry = max(0, 19 - taken_credits(std, att[-1])) if n % 2 == 1 else 0
     return min(24, 19 + carry + (3 if gpa_bonus(std, sem) else 0))
 
 

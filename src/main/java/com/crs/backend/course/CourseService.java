@@ -29,7 +29,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class CourseService {
 
     private static final BigDecimal CHAPEL_CREDIT = new BigDecimal("0.5");
-    private static final BigDecimal TWO = BigDecimal.valueOf(2);
 
     private final CourseRepository courseRepository;
 
@@ -137,10 +136,10 @@ public class CourseService {
         return get(crsCd);
     }
 
-    // 학점 0.5 단위, 채플 규칙, 학과 존재
+    // 학점은 정수이고 0.5학점은 채플에만 있다(V9 ck_course_crdt_integer), 채플 규칙, 학과 존재
     private void validateCourse(BigDecimal crdt, CmplType cmplType, EvalType evalType, int deptNo) {
-        if (crdt.multiply(TWO).stripTrailingZeros().scale() > 0) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "crdt: 0.5 단위여야 합니다.");
+        if (cmplType != CmplType.CHAPEL && crdt.stripTrailingZeros().scale() > 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "crdt: 채플이 아니면 정수여야 합니다.");
         }
         if (cmplType == CmplType.CHAPEL && (crdt.compareTo(CHAPEL_CREDIT) != 0 || evalType != EvalType.PASS_FAIL)) {
             throw new BusinessException(ErrorCode.INVALID_CHAPEL_COURSE);
