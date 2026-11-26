@@ -16,7 +16,7 @@ import java.util.List;
 
 /**
  * 과목 등록. evalType 을 빼면 등급제(채플이면 P/F), rcmdYrLvl 을 빼면 권장학년 없음, prerequisites 를 빼면 선수과목 없음입니다.
- * 학점의 0.5 단위와 채플 규칙은 CourseService 가 검사합니다.
+ * 학점이 정수인지(채플만 0.5)와 채플 규칙은 CourseService 가 검사합니다.
  */
 public record CourseCreateRequest(
         @NotBlank @Pattern(regexp = "[0-9]{7}", message = "숫자 7자리여야 합니다.")

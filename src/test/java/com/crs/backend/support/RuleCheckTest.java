@@ -1,10 +1,12 @@
 package com.crs.backend.support;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.crs.backend.support.SeedFixtures.Lecture;
 import com.crs.backend.support.SeedFixtures.Semester;
 import com.crs.backend.support.SeedFixtures.Student;
+import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
@@ -48,6 +50,18 @@ class RuleCheckTest extends IntegrationTest {
         String chapel = jdbc.queryForObject(
                 "SELECT crs_cd FROM course WHERE cmpl_type = 'CHAPEL' ORDER BY crs_cd LIMIT 1", String.class);
         assertRejected("ck_course_chapel", "UPDATE course SET crdt = 1 WHERE crs_cd = ?", chapel);
+    }
+
+    @Test
+    void 채플이_아닌_과목의_소수_학점은_DB가_거부하고_채플_05는_허용한다() {
+        assertRejected(
+                "ck_course_crdt_integer",
+                "INSERT INTO course (crs_cd, dept_no, crs_nm, crdt, cmpl_type, eval_type) VALUES ('Z00001', 101, '소수', 1.5,"
+                        + " 'MAJOR_ELEC', 'GRADE')");
+        jdbc.update("INSERT INTO course (crs_cd, dept_no, crs_nm, crdt, cmpl_type, eval_type) VALUES ('Z00002', 101,"
+                + " '채플2', 0.5, 'CHAPEL', 'PASS_FAIL')");
+        assertThat(jdbc.queryForObject("SELECT crdt FROM course WHERE crs_cd = 'Z00002'", BigDecimal.class))
+                .isEqualByComparingTo("0.5");
     }
 
     @Test

@@ -44,20 +44,20 @@ SELECT COUNT(*) FROM s a JOIN s b
   ON a.sem_no = b.sem_no AND a.prof_no = b.prof_no AND a.lec_no < b.lec_no
  AND a.dow = b.dow AND a.start_tm < b.end_tm AND b.start_tm < a.end_tm;
 
--- CHECK 최대학점 초과(채플 제외). 산정 값이 없으면 정규학기 18, 계절학기는 학적상태 기준(재학 6, 휴학 3) | 0
+-- CHECK 최대학점 초과(채플과 최대학점 제외 과목 제외). 산정 값이 없으면 정규학기는 1학년 22·2학년 이상 19, 계절학기는 학적상태 기준(재학 6, 휴학 3) | 0
 SELECT COUNT(*) FROM (
   SELECT e.std_no, l.sem_no, SUM(c.crdt) AS crdt
   FROM enrollment e JOIN lecture l USING (lec_no) JOIN course c USING (crs_cd)
-  WHERE e.enrl_stat = 'ENROLLED' AND c.cmpl_type <> 'CHAPEL'
+  WHERE e.enrl_stat = 'ENROLLED' AND c.cmpl_type <> 'CHAPEL' AND c.max_crdt_exmp_yn = 'N'
   GROUP BY e.std_no, l.sem_no) x
 JOIN semester s ON s.sem_no = x.sem_no JOIN student st ON st.std_no = x.std_no
 LEFT JOIN semester_maximum_credit m ON m.std_no = x.std_no AND m.sem_no = x.sem_no
-WHERE x.crdt > COALESCE(m.max_crdt, CASE WHEN s.sem_type IN ('FIRST', 'SECOND') THEN 18
+WHERE x.crdt > COALESCE(m.max_crdt, CASE WHEN s.sem_type IN ('FIRST', 'SECOND') THEN IF(st.yr_lvl = 1, 22, 19)
                                          WHEN st.std_stat = 'ON_LEAVE' THEN 3 ELSE 6 END);
 
--- CHECK 최대학점 값이 학기구분과 맞지 않음(정규학기 18·21, 계절학기 6·3) | 0
+-- CHECK 최대학점 값이 학기구분과 맞지 않음(정규학기 16~24, 계절학기 6·3) | 0
 SELECT COUNT(*) FROM semester_maximum_credit m JOIN semester s USING (sem_no)
-WHERE (s.sem_type IN ('FIRST', 'SECOND')) <> (m.max_crdt IN (18, 21));
+WHERE (s.sem_type IN ('FIRST', 'SECOND')) <> (m.max_crdt BETWEEN 16 AND 24);
 
 -- CHECK 폐강 강의에 남은 신청·장바구니 | 0
 SELECT
@@ -273,11 +273,11 @@ SELECT
 + (SELECT COUNT(*) FROM teaching_assistant_assignment t JOIN lecture l USING (lec_no) JOIN student s ON s.std_no = t.std_no
     WHERE s.std_stat = 'GRADUATED' AND l.sem_no = (SELECT sem_no FROM semester WHERE yr = 2027 AND sem_type = 'FIRST'));
 
--- CHECK 2027-1 최대학점 재계산과 다름(마지막으로 다닌 정규학기 평점 4.0 이상이면 21, 2학년 1학기는 1학년 두 학기 평균) | T1:0, T2:0
+-- CHECK 2027-1 최대학점 재계산과 다름(학년 38학점: 1학년 22·두 번째 학기 38 − 수강 학점, 2학년 이상 19 + 남긴 학점 + 평점 4.0 이상 3, 상한 24. 2학년 1학기 평점은 1학년 두 학기 통산) | T1:0, T2:0
 WITH ord AS (SELECT sem_no, sem_type, yr * 10 + FIELD(sem_type, 'FIRST', 'SUMMER', 'SECOND', 'WINTER') AS o FROM semester),
 tgt AS (SELECT sem_no, o FROM ord WHERE o = 20271),
 reg AS (
-  SELECT e.std_no, ord.o, c.eval_type, c.crdt,
+  SELECT e.std_no, ord.o, c.eval_type, c.crdt, c.cmpl_type, c.max_crdt_exmp_yn,
          CASE g.ltr_grd WHEN 'A+' THEN 4.5 WHEN 'A0' THEN 4.3 WHEN 'A-' THEN 4.0 WHEN 'B+' THEN 3.5
            WHEN 'B0' THEN 3.3 WHEN 'B-' THEN 3.0 WHEN 'C+' THEN 2.5 WHEN 'C0' THEN 2.3 WHEN 'C-' THEN 2.0
            WHEN 'D+' THEN 1.5 WHEN 'D0' THEN 1.3 WHEN 'D-' THEN 1.0 ELSE 0 END AS pt
@@ -286,16 +286,21 @@ reg AS (
   WHERE l.grd_stat = 'CONFIRMED' AND e.enrl_stat = 'ENROLLED' AND ord.sem_type IN ('FIRST', 'SECOND')
     AND g.ltr_grd IS NOT NULL AND ord.o < (SELECT o FROM tgt)),
 terms AS (SELECT std_no, MAX(o) AS last_o, COUNT(DISTINCT o) AS cnt FROM reg GROUP BY std_no),
-last AS (
-  SELECT r.std_no,
-         SUM(CASE WHEN r.eval_type = 'GRADE' THEN r.crdt * r.pt END)
-           / NULLIF(SUM(CASE WHEN r.eval_type = 'GRADE' THEN r.crdt END), 0) AS gpa
+basis AS (
+  SELECT r.std_no, t.cnt,
+         SUM(CASE WHEN r.o = t.last_o AND r.cmpl_type <> 'CHAPEL' AND r.max_crdt_exmp_yn = 'N' THEN r.crdt ELSE 0 END)
+           AS last_crdt,
+         SUM(CASE WHEN (t.cnt = 2 OR r.o = t.last_o) AND r.eval_type = 'GRADE' THEN r.crdt * r.pt END)
+           / NULLIF(SUM(CASE WHEN (t.cnt = 2 OR r.o = t.last_o) AND r.eval_type = 'GRADE' THEN r.crdt END), 0) AS gpa
   FROM reg r JOIN terms t ON t.std_no = r.std_no
-  WHERE t.cnt = 2 OR r.o = t.last_o
-  GROUP BY r.std_no),
+  GROUP BY r.std_no, t.cnt),
 expect AS (
-  SELECT st.std_no, CASE WHEN l.gpa >= 4.0 THEN 21 ELSE 18 END AS mx
-  FROM student st LEFT JOIN last l ON l.std_no = st.std_no
+  SELECT st.std_no,
+         CASE WHEN b.cnt IS NULL THEN 22
+              WHEN b.cnt = 1 THEN LEAST(22, 38 - b.last_crdt)
+              ELSE LEAST(24, 19 + IF(b.cnt % 2 = 1, GREATEST(0, 19 - b.last_crdt), 0)
+                                 + IF(b.gpa >= 4.0, 3, 0)) END AS mx
+  FROM student st LEFT JOIN basis b ON b.std_no = st.std_no
   WHERE st.std_stat = 'ATTENDING' AND CHAR_LENGTH(st.std_no) <> 10)
 SELECT
   (SELECT COUNT(*) FROM expect x LEFT JOIN semester_maximum_credit m

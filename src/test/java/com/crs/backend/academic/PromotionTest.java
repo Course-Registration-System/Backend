@@ -126,27 +126,30 @@ class PromotionTest extends IntegrationTest {
 
     @Test
     void 겨울학기_성적은_최대학점_평점에_넣지_않는다() {
-        // 2026-2 B+ 3학점 + 겨울 A+ 6학점: 겨울을 넣으면 4.17 이라 21 이지만 2026-2 만 봐서 18
+        // 3학년 1학기(정규 4학기째)라 19에 평점 가산만 본다
+        // 2026-2 B+ 3학점 + 겨울 A+ 6학점: 겨울을 넣으면 4.17 이라 22 이지만 2026-2 만 봐서 19
         History low = new History("29990001");
+        prior(low, 5, 6, 7);
         low.take(9, "3.0", "MAJOR_ELEC", "GRADE", "B+");
         low.take(WINTER, "3.0", "MAJOR_ELEC", "GRADE", "A+");
         low.take(WINTER, "3.0", "MAJOR_ELEC", "GRADE", "A+");
-        // 2026-2 A0 3학점 + 겨울 F 3학점: 겨울을 넣으면 2.15 라 18 이지만 2026-2 만 봐서 21
+        // 2026-2 A0 3학점 + 겨울 F 3학점: 겨울을 넣으면 2.15 라 19 이지만 2026-2 만 봐서 22
         History high = new History("29990002");
+        prior(high, 5, 6, 7);
         high.take(9, "3.0", "MAJOR_ELEC", "GRADE", "A0");
         high.take(WINTER, "3.0", "MAJOR_ELEC", "GRADE", "F");
 
         maxCreditService.calculate(Semester.Y2027_FIRST);
 
-        assertThat(low.maxCredit()).isEqualTo(18);
-        assertThat(high.maxCredit()).isEqualTo(21);
+        assertThat(low.maxCredit()).isEqualTo(19);
+        assertThat(high.maxCredit()).isEqualTo(22);
     }
 
     @Test
     void 채플_학점은_졸업_이수_학점에_넣지_않는다() {
-        // 등급제 128학점 + 1.5학점 = 129.5, 채플 6학기 3학점을 더하면 132.5지만 졸업하지 않는다
+        // 등급제 128학점 + 1학점 = 129, 채플 6학기 3학점을 더하면 132지만 졸업하지 않는다
         History s = regularSemesters("29990001", 8, "A0");
-        s.take(9, "1.5", "GEN_ELEC", "GRADE", "A0");
+        s.take(9, "1.0", "GEN_ELEC", "GRADE", "A0");
         chapels(s, 6);
 
         maxCreditService.calculate(Semester.Y2027_FIRST);
@@ -195,73 +198,80 @@ class PromotionTest extends IntegrationTest {
         assertThat(onLeave.yearLevel()).isEqualTo(2);
         assertThat(onLeave.maxCredit()).isNull();
         assertThat(freshman.yearLevel()).isEqualTo(1);
-        assertThat(freshman.maxCredit()).isEqualTo(18);
+        assertThat(freshman.maxCredit()).isEqualTo(22);
     }
 
     @Test
-    void 직전_정규학기_평점이_정확히_4점이면_21학점_399면_18학점() {
+    void 직전_정규학기_평점이_정확히_4점이면_3학점을_더하고_399면_더하지_않는다() {
+        // 3학년 1학기(정규 4학기째)라 19 + 평점 가산
         History exactly4 = new History("29990001");
+        prior(exactly4, 5, 6, 7);
         exactly4.take(9, "3.0", "MAJOR_ELEC", "GRADE", "A-");
         exactly4.take(9, "3.0", "MAJOR_ELEC", "GRADE", "A-");
-        // 3.5학점 A- 7과목 + 0.5학점 B+ = (98 + 1.75) / 25 = 3.99
+        // 4학점 A- 12과목 + 1학점 A- + 1학점 B+ = (196 + 3.5) / 50 = 3.99
         History under4 = new History("29990002");
-        for (int i = 0; i < 7; i++) {
-            under4.take(9, "3.5", "MAJOR_ELEC", "GRADE", "A-");
+        prior(under4, 5, 6, 7);
+        for (int i = 0; i < 12; i++) {
+            under4.take(9, "4.0", "MAJOR_ELEC", "GRADE", "A-");
         }
-        under4.take(9, "0.5", "MAJOR_ELEC", "GRADE", "B+");
+        under4.take(9, "1.0", "MAJOR_ELEC", "GRADE", "A-");
+        under4.take(9, "1.0", "MAJOR_ELEC", "GRADE", "B+");
 
         maxCreditService.calculate(Semester.Y2027_FIRST);
 
-        assertThat(exactly4.maxCredit()).isEqualTo(21);
-        assertThat(under4.maxCredit()).isEqualTo(18);
+        assertThat(exactly4.maxCredit()).isEqualTo(22);
+        assertThat(under4.maxCredit()).isEqualTo(19);
     }
 
     @Test
     void 마지막으로_다닌_정규학기로_산정하고_계절학기와_PF_과목은_보지_않는다() {
-        // 2026-1에 4.3, 휴학으로 2026-2는 건너뜀, 여름학기 F → 2026-1 평점으로 21
+        // 정규 4학기째 2026-1에 4.3, 휴학으로 2026-2는 건너뜀, 여름학기 F → 2026-1 평점으로 19 + 3
         History returning = new History("29990001");
+        prior(returning, 4, 5, 6);
         returning.take(7, "3.0", "MAJOR_ELEC", "GRADE", "A0");
         returning.take(SUMMER, "3.0", "MAJOR_ELEC", "GRADE", "F");
-        // 3학기째 학생의 마지막 정규학기가 P/F 과목뿐이면 평점이 없어 18 (그 전 학기가 4.3이어도)
+        // 4학기째 학생의 마지막 정규학기가 P/F 과목뿐이면 평점이 없어 19 (그 전 학기가 4.3이어도)
         History passFailOnly = new History("29990002");
+        passFailOnly.take(5, "3.0", "MAJOR_ELEC", "GRADE", "A0");
         passFailOnly.take(6, "3.0", "MAJOR_ELEC", "GRADE", "A0");
         passFailOnly.take(7, "3.0", "MAJOR_ELEC", "GRADE", "A0");
         passFailOnly.take(9, "0.5", "CHAPEL", "PASS_FAIL", "P");
 
         maxCreditService.calculate(Semester.Y2027_FIRST);
 
-        assertThat(returning.maxCredit()).isEqualTo(21);
-        assertThat(passFailOnly.maxCredit()).isEqualTo(18);
+        assertThat(returning.maxCredit()).isEqualTo(22);
+        assertThat(passFailOnly.maxCredit()).isEqualTo(19);
     }
 
     @Test
     void 이학년_일학기는_일학년_두_학기를_합친_학점_가중_평균으로_정한다() {
-        // 2026-1 A+ 3학점, 2026-2 B+ 1학점: 마지막 학기만 보면 3.5지만 1학년 평균은 (13.5 + 3.5) / 4 = 4.25 → 21
+        // 2026-1 A+ 3학점, 2026-2 B+ 1학점: 마지막 학기만 보면 3.5지만 1학년 평균은 (13.5 + 3.5) / 4 = 4.25 → 19 + 3
         History risen = new History("29990001");
         risen.take(7, "3.0", "MAJOR_ELEC", "GRADE", "A+");
         risen.take(9, "1.0", "MAJOR_ELEC", "GRADE", "B+");
-        // 2026-1 C+ 3학점, 2026-2 A0 3학점: 마지막 학기만 보면 4.3이지만 1학년 평균은 3.4 → 18
+        // 2026-1 C+ 3학점, 2026-2 A0 3학점: 마지막 학기만 보면 4.3이지만 1학년 평균은 3.4 → 19
         History fallen = new History("29990002");
         fallen.take(7, "3.0", "MAJOR_ELEC", "GRADE", "C+");
         fallen.take(9, "3.0", "MAJOR_ELEC", "GRADE", "A0");
-        // 3학기째는 다시 마지막 학기만 본다: 2025-2 F, 2026-1 C+, 2026-2 A0 → 4.3 → 21
+        // 4학기째(3학년 1학기)는 다시 마지막 학기만 본다: 2025-1 A+, 2025-2 F, 2026-1 C+, 2026-2 A0 → 4.3 → 19 + 3
         History third = new History("29990003");
+        third.take(5, "3.0", "MAJOR_ELEC", "GRADE", "A+");
         third.take(6, "3.0", "MAJOR_ELEC", "GRADE", "F");
         third.take(7, "3.0", "MAJOR_ELEC", "GRADE", "C+");
         third.take(9, "3.0", "MAJOR_ELEC", "GRADE", "A0");
 
         maxCreditService.calculate(Semester.Y2027_FIRST);
 
-        assertThat(risen.maxCredit()).isEqualTo(21);
-        assertThat(fallen.maxCredit()).isEqualTo(18);
-        assertThat(third.maxCredit()).isEqualTo(21);
+        assertThat(risen.maxCredit()).isEqualTo(22);
+        assertThat(fallen.maxCredit()).isEqualTo(19);
+        assertThat(third.maxCredit()).isEqualTo(22);
     }
 
     @Test
     void 다시_산정하면_이번_대상에서_빠진_학생의_지난_값을_지운다() {
         History s = regularSemesters("29990001", 2, "A0");
         maxCreditService.calculate(Semester.Y2027_FIRST);
-        assertThat(s.maxCredit()).isEqualTo(21);
+        assertThat(s.maxCredit()).isEqualTo(22);
 
         jdbc.update("UPDATE student SET std_stat = 'ON_LEAVE' WHERE std_no = ?", "29990001");
         maxCreditService.calculate(Semester.Y2027_FIRST);
@@ -273,7 +283,7 @@ class PromotionTest extends IntegrationTest {
     void 성적_미확정으로_막히면_그_학기의_기존_최대학점을_지우지_않는다() {
         History s = regularSemesters("29990001", 2, "A0");
         maxCreditService.calculate(Semester.Y2027_FIRST);
-        assertThat(s.maxCredit()).isEqualTo(21);
+        assertThat(s.maxCredit()).isEqualTo(22);
 
         // 서비스 예외로 테스트 트랜잭션이 롤백 전용이 되지만 롤백은 테스트가 끝날 때라 같은 트랜잭션에서 남은 값을 읽을 수 있다
         s.takeUnconfirmed(WINTER, "3.0", "MAJOR_ELEC", "GRADE", "A0");
@@ -282,7 +292,7 @@ class PromotionTest extends IntegrationTest {
                         BusinessException.class,
                         e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.GRADES_NOT_CONFIRMED));
 
-        assertThat(s.maxCredit()).isEqualTo(21);
+        assertThat(s.maxCredit()).isEqualTo(22);
     }
 
     @Test
@@ -294,7 +304,75 @@ class PromotionTest extends IntegrationTest {
 
         maxCreditService.calculate(Semester.Y2027_FIRST);
 
-        assertThat(s.maxCredit()).isEqualTo(18);
+        assertThat(s.maxCredit()).isEqualTo(22); // 확정된 정규학기가 없어 1학년 첫 학기
+    }
+
+    @Test
+    void 일학년_두_번째_학기는_38에서_첫_학기_수강_학점을_빼고_22를_넘지_않는다() {
+        // 첫 학기 22학점을 다 들으면 38 − 22 = 16
+        History full = new History("29990001");
+        take(full, 9, 5, "2.0", "B+");
+        // 15학점만 들으면 38 − 15 = 23 이지만 상한 22. 1학년은 평점 4.5여도 가산하지 않는다
+        History light = new History("29990002");
+        take(light, 9, 3, "3.0", "A+");
+
+        maxCreditService.calculate(Semester.Y2027_FIRST);
+
+        assertThat(full.maxCredit()).isEqualTo(16);
+        assertThat(light.maxCredit()).isEqualTo(22);
+    }
+
+    @Test
+    void 수강_학점은_채플과_최대학점_제외_과목을_빼고_F는_센다() {
+        // 4학점 3과목 + 2학점 + F 4학점 = 18. 채플 0.5와 제외 과목 1학점은 세지 않는다 → 38 − 18 = 20
+        History s = new History("29990001");
+        take(s, 9, 3, "2.0", "B0");
+        s.take(9, "4.0", "MAJOR_ELEC", "GRADE", "F");
+        s.take(9, "0.5", "CHAPEL", "PASS_FAIL", "P");
+        s.takeExempt(9, "1.0", "A0");
+
+        maxCreditService.calculate(Semester.Y2027_FIRST);
+
+        assertThat(s.maxCredit()).isEqualTo(20);
+    }
+
+    @Test
+    void 이학년_이상_두_번째_학기는_남긴_학점을_더하고_24를_넘지_않는다() {
+        // 2학년 1학기(정규 3학기째)에 15학점, B+ → 19 + 4 = 23
+        History rest = new History("29990001");
+        prior(rest, 6, 7);
+        take(rest, 9, 3, "3.0", "B+");
+        // 15학점, A0 → 19 + 4 + 3 = 26 이지만 상한 24
+        History restHigh = new History("29990002");
+        prior(restHigh, 6, 7);
+        take(restHigh, 9, 3, "3.0", "A0");
+        // 가산으로 22학점을 다 들었으면 남긴 학점은 0(음수 아님), 평점 4.0 → 19 + 0 + 3 = 22
+        History bonusUsed = new History("29990003");
+        prior(bonusUsed, 6, 7);
+        take(bonusUsed, 9, 5, "2.0", "A-");
+
+        maxCreditService.calculate(Semester.Y2027_FIRST);
+
+        assertThat(rest.maxCredit()).isEqualTo(23);
+        assertThat(restHigh.maxCredit()).isEqualTo(24);
+        assertThat(bonusUsed.maxCredit()).isEqualTo(22);
+    }
+
+    @Test
+    void 휴학하면_마지막으로_다닌_학기가_학년_첫_학기일_때만_남긴_학점을_넘긴다() {
+        // 3학년 1학기(정규 5학기째, 2026-1)에 12학점을 듣고 2026-2 휴학 → 복학 학기가 3학년 2학기: 19 + 7 = 26 → 24
+        History firstTerm = new History("29990001");
+        prior(firstTerm, 3, 4, 5, 6);
+        take(firstTerm, 7, 3, "0.0", "B0");
+        // 2학년 2학기(정규 4학기째, 2026-1)에 12학점을 듣고 휴학 → 복학 학기가 3학년 1학기라 이월 없이 19
+        History secondTerm = new History("29990002");
+        prior(secondTerm, 4, 5, 6);
+        take(secondTerm, 7, 3, "0.0", "B0");
+
+        maxCreditService.calculate(Semester.Y2027_FIRST);
+
+        assertThat(firstTerm.maxCredit()).isEqualTo(24);
+        assertThat(secondTerm.maxCredit()).isEqualTo(19);
     }
 
     /** 정규 8학기, 학기마다 4학점 A0 4과목(128학점) + 2학점 1과목 = 130학점, 채플 P 학기 n개. */
@@ -314,6 +392,23 @@ class PromotionTest extends IntegrationTest {
             }
         }
         return s;
+    }
+
+    /** 앞 정규학기마다 3학점 C0 한 과목(평점 가산 없음). 학년의 몇 번째 학기인지 맞추는 데 씁니다. */
+    private void prior(History s, int... semesters) {
+        for (int sem : semesters) {
+            s.take(sem, "3.0", "MAJOR_ELEC", "GRADE", "C0");
+        }
+    }
+
+    /** 그 학기에 4학점 과목 n개와 extra 학점 과목 하나(0.0이면 없음)를 같은 등급으로 듣습니다. */
+    private void take(History s, int sem, int fourCredit, String extra, String grade) {
+        for (int i = 0; i < fourCredit; i++) {
+            s.take(sem, "4.0", "MAJOR_ELEC", "GRADE", grade);
+        }
+        if (new BigDecimal(extra).signum() > 0) {
+            s.take(sem, extra, "MAJOR_ELEC", "GRADE", grade);
+        }
     }
 
     private void chapels(History s, int terms) {
@@ -339,6 +434,13 @@ class PromotionTest extends IntegrationTest {
             String crsCd = newCourse(crdt, cmplType, evalType);
             enroll(crsCd, semNo, grade);
             return crsCd;
+        }
+
+        /** 최대학점 제외 과목(한반도와평화통일 같은)을 새로 만들어 그 학기에 이수합니다. */
+        void takeExempt(int semNo, String crdt, String grade) {
+            String crsCd = newCourse(crdt, "GEN_REQ", "GRADE");
+            jdbc.update("UPDATE course SET max_crdt_exmp_yn = 'Y' WHERE crs_cd = ?", crsCd);
+            enroll(crsCd, semNo, grade);
         }
 
         /** 새 과목을 그 학기에 듣고 성적은 제출만 된(확정 전) 상태로 둡니다. */

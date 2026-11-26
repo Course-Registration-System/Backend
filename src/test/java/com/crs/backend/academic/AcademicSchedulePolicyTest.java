@@ -169,9 +169,11 @@ class AcademicSchedulePolicyTest extends IntegrationTest {
     }
 
     @Test
-    void 최대학점은_산정_결과를_쓰고_없으면_학기와_학적으로_정한다() {
+    void 최대학점은_산정_결과를_쓰고_없으면_학기_학년_학적으로_정한다() {
         assertThat(policy.maxCredit(Student.ON_LEAVE, Semester.Y2026_WINTER)).isEqualTo(3); // 산정 결과
-        assertThat(policy.maxCredit(Student.DEMO, Semester.Y2027_FIRST)).isEqualTo(18); // T0 에는 2027-1 산정 전
+        assertThat(policy.maxCredit(Student.DEMO, Semester.Y2027_FIRST)).isEqualTo(22); // T0 에는 2027-1 산정 전, 1학년 기본값
+        assertThat(policy.maxCredit(Student.GPA_EXACTLY_4, Semester.Y2027_FIRST))
+                .isEqualTo(19); // 2학년 이상 기본값
 
         // 산정 결과가 없는 새 계절학기
         addSemester(98, "SUMMER");

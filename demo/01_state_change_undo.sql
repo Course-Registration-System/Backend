@@ -5,7 +5,7 @@
 UPDATE lecture SET cap = enrl_cnt + 1 WHERE lec_no = 197;
 
 -- 기대: 성공
-UPDATE semester_maximum_credit SET max_crdt = 21 WHERE std_no = '20260001' AND sem_no = 11;
+UPDATE semester_maximum_credit SET max_crdt = 22 WHERE std_no = '20260001' AND sem_no = 11;
 
 -- 기대: 성공
 UPDATE academic_schedule SET end_dtm = '2027-02-11 17:00:00' WHERE schd_no = 68;

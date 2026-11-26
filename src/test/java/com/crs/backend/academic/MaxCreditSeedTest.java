@@ -76,8 +76,8 @@ class MaxCreditSeedTest extends IntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.regular").value(true))
                 .andExpect(jsonPath("$.graduated").value(0))
-                .andExpect(jsonPath("$.counts.21").value(3))
-                .andExpect(jsonPath("$.counts.18").value(12));
+                .andExpect(jsonPath("$.counts.22").value(5))
+                .andExpect(jsonPath("$.counts.19").value(10));
 
         assertThat(students()).isEqualTo(studentsBefore);
         assertThat(maxCredits(Semester.Y2027_FIRST)).isEqualTo(creditsBefore);
@@ -88,12 +88,13 @@ class MaxCreditSeedTest extends IntegrationTest {
         SeedTime.apply(dataSource, SeedTime.S1);
         calculate(Semester.Y2027_FIRST).andExpect(status().isOk());
 
-        assertThat(maxCredit(Student.GPA_EXACTLY_4)).isEqualTo(21);
-        assertThat(maxCredit(Student.GPA_JUST_UNDER_4)).isEqualTo(18);
-        assertThat(maxCredit(Student.PASS_FAIL_ONLY)).isEqualTo(18);
-        assertThat(maxCredit(Student.RETURNING)).isEqualTo(21);
-        assertThat(maxCredit(Student.DEMO)).isEqualTo(21);
-        assertThat(maxCredit(Student.FRESHMAN)).isEqualTo(18);
+        // 학년 첫 학기라 19, 평점 4.0 이상이면 +3. 신입생은 1학년 첫 학기 22
+        assertThat(maxCredit(Student.GPA_EXACTLY_4)).isEqualTo(22);
+        assertThat(maxCredit(Student.GPA_JUST_UNDER_4)).isEqualTo(19);
+        assertThat(maxCredit(Student.PASS_FAIL_ONLY)).isEqualTo(19);
+        assertThat(maxCredit(Student.RETURNING)).isEqualTo(22);
+        assertThat(maxCredit(Student.DEMO)).isEqualTo(22);
+        assertThat(maxCredit(Student.FRESHMAN)).isEqualTo(22);
         assertThat(maxCredit(Student.GRADUATING)).isNull();
         assertThat(maxCredit(Student.ON_LEAVE)).isNull();
     }
@@ -165,7 +166,7 @@ class MaxCreditSeedTest extends IntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(15))
                 .andExpect(jsonPath("$[?(@.stdNo == '%s')].maxCrdt", Student.GPA_EXACTLY_4)
-                        .value(21));
+                        .value(22));
     }
 
     @Test

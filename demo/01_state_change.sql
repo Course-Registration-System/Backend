@@ -10,8 +10,8 @@ UPDATE lecture SET cap = enrl_cnt WHERE lec_no = 197;
 SELECT lec_no, cap, enrl_cnt, cap - enrl_cnt AS 잔여 FROM lecture WHERE lec_no = 197;
 
 -- 기대: 성공
--- [최대학점] 시연 학생의 2027-1 최대학점을 21 → 18로 바꾼다 → 21학점 신청이 막힌다
-UPDATE semester_maximum_credit SET max_crdt = 18 WHERE std_no = '20260001' AND sem_no = 11;
+-- [최대학점] 시연 학생의 2027-1 최대학점을 22 → 19로 바꾼다(평점 가산 3학점을 뺀 값) → 21학점 신청이 막힌다
+UPDATE semester_maximum_credit SET max_crdt = 19 WHERE std_no = '20260001' AND sem_no = 11;
 
 -- 기대: 성공
 -- [기간] 2학년 수강신청을 10:00~10:03으로 줄인다 → T1(10:05)에 2학년 신청이 막힌다

@@ -17,7 +17,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class AcademicSchedulePolicy implements SchedulePolicy {
 
-    static final int REGULAR_DEFAULT_MAX_CREDIT = 18;
     static final int SEASONAL_ATTENDING_MAX_CREDIT = 6;
     static final int SEASONAL_ON_LEAVE_MAX_CREDIT = 3;
 
@@ -65,13 +64,14 @@ public class AcademicSchedulePolicy implements SchedulePolicy {
         return repository.findMaxCredit(stdNo, semNo).orElseGet(() -> defaultMaxCredit(stdNo, semNo));
     }
 
-    // 산정 결과가 없는 학생(산정 후 등록·복학 등): 정규학기 18, 계절학기는 학적상태로 정한다(ACA-01). 대학원생은 산정 대상이 아니라 0
+    // 산정 결과가 없는 학생(산정 후 등록·복학 등): 정규학기는 1학년 22, 2학년 이상 19, 계절학기는 학적상태로 정한다(ACA-01).
+    // 대학원생은 산정 대상이 아니라 0
     private int defaultMaxCredit(String stdNo, int semNo) {
         if (UserNo.isGraduate(stdNo)) {
             return 0;
         }
         if (!repository.isSeasonal(semNo)) {
-            return REGULAR_DEFAULT_MAX_CREDIT;
+            return repository.isFirstYear(stdNo) ? MaxCreditRule.FIRST_YEAR_TERM : MaxCreditRule.BASE_TERM;
         }
         return repository.isOnLeave(stdNo) ? SEASONAL_ON_LEAVE_MAX_CREDIT : SEASONAL_ATTENDING_MAX_CREDIT;
     }

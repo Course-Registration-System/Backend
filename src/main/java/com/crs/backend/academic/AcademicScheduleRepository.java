@@ -72,6 +72,11 @@ public class AcademicScheduleRepository {
                 "SELECT EXISTS (SELECT 1 FROM semester WHERE sem_no = ? AND sem_type IN ('SUMMER', 'WINTER'))", semNo);
     }
 
+    /** 학년이 1인지. 학년은 최대학점 산정(진급) 때 다시 계산한 값입니다. 없는 학생이면 false. */
+    public boolean isFirstYear(String stdNo) {
+        return exists("SELECT EXISTS (SELECT 1 FROM student WHERE std_no = ? AND yr_lvl = 1)", stdNo);
+    }
+
     public boolean isOnLeave(String stdNo) {
         return exists("SELECT EXISTS (SELECT 1 FROM student WHERE std_no = ? AND std_stat = 'ON_LEAVE')", stdNo);
     }

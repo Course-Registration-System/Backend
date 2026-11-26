@@ -73,7 +73,7 @@ class CartControllerTest extends IntegrationTest {
 
         add(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT).andExpect(status().isCreated());
         add(Student.GPA_JUST_UNDER_4, Lecture.ONE_SEAT_LEFT).andExpect(status().isCreated());
-        // 2027-1 최대학점 산정 전이라 정규학기 기본값 18
+        // 2027-1 최대학점 산정 전이라 정규학기 기본값. 이 학생은 T0 에 3학년이라 19
         add(Student.GPA_EXACTLY_4, chapel)
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.semNo").value(Semester.Y2027_FIRST))
@@ -82,7 +82,7 @@ class CartControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.items[0].timeSlots").isNotEmpty())
                 .andExpect(jsonPath("$.items[1].lecNo").value(chapel))
                 .andExpect(jsonPath("$.cartCredits").value(credit))
-                .andExpect(jsonPath("$.maxCredit").value(18));
+                .andExpect(jsonPath("$.maxCredit").value(19));
     }
 
     @Test
