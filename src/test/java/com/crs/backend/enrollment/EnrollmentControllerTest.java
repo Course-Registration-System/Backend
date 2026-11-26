@@ -214,6 +214,31 @@ class EnrollmentControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 최대학점_제외_과목은_최대학점을_넘어도_신청되고_합계에도_넣지_않는다() throws Exception {
+        // 시드에 2027-1 한반도와평화통일 강의가 없어 1020020 과목을 제외 과목으로 바꾼다(테스트 트랜잭션이 되돌린다)
+        jdbc.update("UPDATE course SET max_crdt_exmp_yn = 'Y' WHERE crs_cd = '1020020'");
+        JdbcTemplate root = new JdbcTemplate(dataSourceAs("root"));
+        root.update(
+                "INSERT INTO semester_maximum_credit (std_no, sem_no, max_crdt) VALUES (?, ?, 3)",
+                STUDENT,
+                Semester.Y2027_FIRST);
+        try {
+            int exempt = lecture("1020020", 1);
+            enroll(STUDENT, COMPILER).andExpect(status().isCreated());
+            // 최대학점(3)이 찼어도 제외 과목은 신청된다
+            enroll(STUDENT, exempt).andExpect(status().isCreated());
+            // 제외 과목은 합계에 들어가지 않아, 컴파일러를 취소하고 다시 신청해도 3학점 안이다
+            cancel(STUDENT, COMPILER).andExpect(status().isNoContent());
+            enroll(STUDENT, COMPILER).andExpect(status().isCreated());
+        } finally {
+            root.update(
+                    "DELETE FROM semester_maximum_credit WHERE std_no = ? AND sem_no = ?",
+                    STUDENT,
+                    Semester.Y2027_FIRST);
+        }
+    }
+
+    @Test
     void 선수과목을_이수해야_신청할_수_있다() throws Exception {
         // PREREQ_NOT_MET 학생: 자료구조 D+
         enroll(Student.PREREQ_NOT_MET, lecture("1010014", 1))

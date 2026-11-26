@@ -76,10 +76,7 @@ public class CartService {
 
     private CartResponse view(String stdNo, int semNo) {
         List<CartItemResponse> items = cartRepository.findItems(stdNo, semNo);
-        BigDecimal credits = items.stream()
-                .filter(item -> !"CHAPEL".equals(item.cmplType()))
-                .map(CartItemResponse::crdt)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal credits = cartRepository.sumCredits(stdNo, semNo);
         return new CartResponse(semNo, items, credits, schedulePolicy.maxCredit(stdNo, semNo));
     }
 

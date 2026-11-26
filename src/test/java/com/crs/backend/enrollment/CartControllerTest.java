@@ -86,6 +86,19 @@ class CartControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 최대학점_제외_과목은_담은_학점에_넣지_않는다() throws Exception {
+        // 시드에 2027-1 한반도와평화통일 강의가 없어 컴파일러 과목을 잠시 제외 과목으로 바꾼다(테스트 트랜잭션이 되돌린다)
+        jdbc.update(
+                "UPDATE course c JOIN lecture l ON l.crs_cd = c.crs_cd SET c.max_crdt_exmp_yn = 'Y' WHERE l.lec_no = ?",
+                Lecture.ONE_SEAT_LEFT);
+
+        add(Student.GPA_EXACTLY_4, Lecture.ONE_SEAT_LEFT)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.items[0].lecNo").value(Lecture.ONE_SEAT_LEFT))
+                .andExpect(jsonPath("$.cartCredits").value(0));
+    }
+
+    @Test
     void 정원이_찬_강의도_담을_수_있다() throws Exception {
         add(Student.GPA_EXACTLY_4, Lecture.FULL).andExpect(status().isCreated());
     }

@@ -4,6 +4,7 @@ import com.crs.backend.enrollment.dto.CartItemResponse;
 import com.crs.backend.lecture.LecStat;
 import com.crs.backend.lecture.dto.TimeSlotResponse;
 import com.crs.backend.user.StdStat;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +56,18 @@ public class CartRepository {
                         slots.getOrDefault(rs.getInt("lec_no"), List.of())),
                 stdNo,
                 semNo);
+    }
+
+    /** 담은 학점 합. 수강신청(REG-03)의 최대학점 비교와 같게 채플과 최대학점 제외 과목은 넣지 않습니다. */
+    public BigDecimal sumCredits(String stdNo, int semNo) {
+        return jdbc.queryForObject("""
+                SELECT COALESCE(SUM(c.crdt), 0)
+                  FROM course_cart k
+                  JOIN lecture l ON l.lec_no = k.lec_no
+                  JOIN course c ON c.crs_cd = l.crs_cd
+                 WHERE k.std_no = ? AND l.sem_no = ?
+                   AND c.cmpl_type <> 'CHAPEL' AND c.max_crdt_exmp_yn = 'N'
+                """, BigDecimal.class, stdNo, semNo);
     }
 
     private Map<Integer, List<TimeSlotResponse>> findSlots(String stdNo, int semNo) {
