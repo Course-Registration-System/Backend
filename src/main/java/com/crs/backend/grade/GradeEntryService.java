@@ -18,6 +18,8 @@ import com.crs.backend.lecture.LecStat;
 import com.crs.backend.lecture.LectureAccess;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -30,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 성적 입력·수정(GRD-01). 교수와 권한 있는 조교는 성적 입력 기간에 등급제 과목은 원점수, P/F 과목은 P·F 만 저장합니다. 등급제 과목은 저장할
  * 때마다 강의 전체(원점수가 다 있는 학생)의 최종점수·등급을 다시 계산합니다. 원점수 총점은 tot_scr, 최종점수는 fnl_scr 에 둡니다. 성적표 조회는
- * 기간과 관계없습니다.
+ * 성적 입력 기간과 관계없지만, 수강생 명단처럼 신청 종료(정정 종료) 뒤부터 봅니다.
  *
  * <ul>
  *   <li>절대평가: 최종점수 = 원점수 총점(소수점 버림)
@@ -60,21 +62,38 @@ public class GradeEntryService {
     private final GradeEntryRepository gradeEntryRepository;
     private final LectureAccess lectureAccess;
     private final SchedulePolicy schedulePolicy;
+    private final Clock clock;
 
     public GradeEntryService(
-            GradeEntryRepository gradeEntryRepository, LectureAccess lectureAccess, SchedulePolicy schedulePolicy) {
+            GradeEntryRepository gradeEntryRepository,
+            LectureAccess lectureAccess,
+            SchedulePolicy schedulePolicy,
+            Clock clock) {
         this.gradeEntryRepository = gradeEntryRepository;
         this.lectureAccess = lectureAccess;
         this.schedulePolicy = schedulePolicy;
+        this.clock = clock;
     }
 
-    /** 성적표 조회. 없는 강의는 권한보다 먼저 404 입니다. */
+    /**
+     * 성적표 조회. 없는 강의는 권한보다 먼저 404 입니다. 성적표에도 수강생 명단이 들어 있어 수강생 명단 조회(LEC-02)와 같이 신청 종료 뒤부터
+     * 봅니다.
+     */
     @Transactional(readOnly = true)
     public GradeSheetResponse sheet(CurrentUser user, int lecNo) {
         LectureRow lecture = gradeEntryRepository
                 .findLecture(lecNo)
                 .orElseThrow(() -> new BusinessException(ErrorCode.LECTURE_NOT_FOUND));
         lectureAccess.checkManage(user, lecNo);
+
+        // 신청 종료(정정 종료, 정정이 없으면 마지막 수강신청일 종료) 뒤부터. 신청 일정이 하나도 없는 학기는 바로 볼 수 있다
+        LocalDateTime now = LocalDateTime.now(clock);
+        boolean beforeEnd =
+                schedulePolicy.registrationEnd(lecture.semNo()).map(now::isBefore).orElse(false);
+        if (beforeEnd) {
+            throw new BusinessException(ErrorCode.ROSTER_NOT_OPEN);
+        }
+
         return toSheet(lecture, gradeEntryRepository.findStudents(lecNo));
     }
 
