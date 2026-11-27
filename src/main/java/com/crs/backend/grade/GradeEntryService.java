@@ -88,8 +88,10 @@ public class GradeEntryService {
 
         // 신청 종료(정정 종료, 정정이 없으면 마지막 수강신청일 종료) 뒤부터. 신청 일정이 하나도 없는 학기는 바로 볼 수 있다
         LocalDateTime now = LocalDateTime.now(clock);
-        boolean beforeEnd =
-                schedulePolicy.registrationEnd(lecture.semNo()).map(now::isBefore).orElse(false);
+        boolean beforeEnd = schedulePolicy
+                .registrationEnd(lecture.semNo())
+                .map(now::isBefore)
+                .orElse(false);
         if (beforeEnd) {
             throw new BusinessException(ErrorCode.ROSTER_NOT_OPEN);
         }
