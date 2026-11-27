@@ -123,22 +123,22 @@
 
 | 학번 | 이름 | 학과 | T0 학년·학적 | s1 이후 학년·학적 | 2027-1 최대학점 |
 | --- | --- | --- | --- | --- | --- |
-| 20230001 | 김민준 | 컴퓨터학부 | 4 ATTENDING | 4 GRADUATED | - |
+| 20230001 | 김민준 | 소프트웨어학부 | 4 ATTENDING | 4 GRADUATED | - |
 | 20230002 | 이서연 | 경영학부 | 4 ATTENDING | 4 ATTENDING | 19 |
-| 20230003 | 박도윤 | 컴퓨터학부 | 4 ON_LEAVE | 4 ON_LEAVE | - |
-| 20240001 | 최지우 | 컴퓨터학부 | 3 ATTENDING | 4 ATTENDING | 22 |
+| 20230003 | 박도윤 | 소프트웨어학부 | 4 ON_LEAVE | 4 ON_LEAVE | - |
+| 20240001 | 최지우 | 소프트웨어학부 | 3 ATTENDING | 4 ATTENDING | 22 |
 | 20240002 | 정하준 | 경영학부 | 3 ATTENDING | 4 ATTENDING | 19 |
-| 20240003 | 강서준 | 컴퓨터학부 | 3 ATTENDING | 4 ATTENDING | 19 |
-| 20240004 | 윤예린 | 컴퓨터학부 | 3 ATTENDING | 4 ATTENDING | 19 |
+| 20240003 | 강서준 | 소프트웨어학부 | 3 ATTENDING | 4 ATTENDING | 19 |
+| 20240004 | 윤예린 | 소프트웨어학부 | 3 ATTENDING | 4 ATTENDING | 19 |
 | 20240005 | 장수아 | 경영학부 | 3 ATTENDING | 4 ATTENDING | 19 |
-| 20250001 | 임지호 | 컴퓨터학부 | 2 ATTENDING | 3 ATTENDING | 19 |
+| 20250001 | 임지호 | 소프트웨어학부 | 2 ATTENDING | 3 ATTENDING | 19 |
 | 20250002 | 한유나 | 경영학부 | 2 ON_LEAVE | 2 ATTENDING | 22 |
-| 20250003 | 오시우 | 컴퓨터학부 | 2 ATTENDING | 3 ATTENDING | 19 |
-| 20260001 | 서준우 | 컴퓨터학부 | 1 ATTENDING | 2 ATTENDING | 22 |
+| 20250003 | 오시우 | 소프트웨어학부 | 2 ATTENDING | 3 ATTENDING | 19 |
+| 20260001 | 서준우 | 소프트웨어학부 | 1 ATTENDING | 2 ATTENDING | 22 |
 | 20260002 | 권하은 | 경영학부 | 1 ATTENDING | 2 ATTENDING | 19 |
-| 20260003 | 배지안 | 컴퓨터학부 | 1 ATTENDING | 2 ATTENDING | 19 |
+| 20260003 | 배지안 | 소프트웨어학부 | 1 ATTENDING | 2 ATTENDING | 19 |
 | 20260004 | 송태윤 | 경영학부 | 1 ATTENDING | 2 ATTENDING | 19 |
-| 20270001 | 문서윤 | 컴퓨터학부 | - | 1 ATTENDING | 22 |
+| 20270001 | 문서윤 | 소프트웨어학부 | - | 1 ATTENDING | 22 |
 | 20270002 | 류채원 | 경영학부 | - | 1 ATTENDING | 22 |
 
 ## 학사일정 (2026 겨울, 2027-1)
