@@ -114,6 +114,26 @@ class GradeEntryControllerTest extends IntegrationTest {
     }
 
     @Test
+    void 신청_종료_전에는_성적표도_409_종료_시각부터_본다() throws Exception {
+        // 2027-1 신청 종료(정정 종료)는 2027-03-09 17:00, 시드 기준 시각 T0 은 그 전이다
+        int lecNo = jdbc.queryForObject(
+                "SELECT MIN(lec_no) FROM lecture WHERE sem_no = ? AND lec_stat = 'OPEN'",
+                Integer.class,
+                Semester.Y2027_FIRST);
+        String profNo = jdbc.queryForObject("SELECT prof_no FROM lecture WHERE lec_no = ?", String.class, lecNo);
+
+        sheet(profNo, Role.PROFESSOR, lecNo)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ROSTER_NOT_OPEN"));
+
+        TestClock.at(clock, "2027-03-09T16:59:59");
+        sheet(profNo, Role.PROFESSOR, lecNo).andExpect(status().isConflict());
+
+        TestClock.at(clock, "2027-03-09T17:00:00");
+        sheet(profNo, Role.PROFESSOR, lecNo).andExpect(status().isOk());
+    }
+
+    @Test
     void 배정된_조교는_성적표를_본다_수강생이_없으면_절대평가() throws Exception {
         sheet(Student.TEACHING_ASSISTANT, Role.STUDENT, Lecture.TA_CURRENT)
                 .andExpect(status().isOk())
