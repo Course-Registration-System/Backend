@@ -74,9 +74,9 @@ INSERT INTO user_account (usr_no, pwd, usr_nm, email, role, acct_stat) VALUES
   ('2026710001', '$2a$10$mVtkuC8t.ybJShFMmg7dAePnho.f1IpD92TXrTXipF.OhtbWdF/.S', '정대원', '2026710001@example.ac.kr', 'STUDENT', 'ACTIVE');
 
 INSERT INTO department (dept_no, dept_nm) VALUES
-  (101, '컴퓨터학부'),
+  (101, '소프트웨어학부'),
   (102, '경영학부'),
-  (103, '교양교육원');
+  (103, '베어드교양대학');
 
 INSERT INTO student (std_no, dept_no, yr_lvl, std_stat) VALUES
   ('20230001', 101, 4, 'ATTENDING'),
@@ -99,8 +99,8 @@ INSERT INTO student (std_no, dept_no, yr_lvl, std_stat) VALUES
 INSERT INTO professor (prof_no, dept_no, office) VALUES
   ('100001', 101, '정보관 501호'),
   ('100002', 101, '정보관 502호'),
-  ('100003', 102, '경영관 401호'),
-  ('100004', 102, '경영관 402호'),
+  ('100003', 102, '숭덕경상관 401호'),
+  ('100004', 102, '숭덕경상관 402호'),
   ('100005', 103, '본관 301호'),
   ('100006', 101, NULL);
 
@@ -124,9 +124,9 @@ INSERT INTO classroom (room_cd, room_nm) VALUES
   ('21301', '정보관 301호'),
   ('21302', '정보관 302호'),
   ('21303', '정보관 303호'),
-  ('06101', '경영관 101호'),
-  ('06102', '경영관 102호'),
-  ('06103', '경영관 103호'),
+  ('06101', '숭덕경상관 101호'),
+  ('06102', '숭덕경상관 102호'),
+  ('06103', '숭덕경상관 103호'),
   ('01101', '대강당');
 
 INSERT INTO course (crs_cd, dept_no, crs_nm, crdt, cmpl_type, eval_type, rcmd_yr_lvl, max_crdt_exmp_yn) VALUES

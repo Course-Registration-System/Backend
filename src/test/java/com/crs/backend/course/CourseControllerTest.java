@@ -80,7 +80,7 @@ class CourseControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$[*].deptNo", everyItem(org.hamcrest.Matchers.is(101))))
                 .andExpect(jsonPath("$[*].cmplType", everyItem(org.hamcrest.Matchers.is("MAJOR_ELEC"))))
                 .andExpect(jsonPath("$[0].crsCd").value(DATABASE))
-                .andExpect(jsonPath("$[0].deptNm").value("컴퓨터학부"))
+                .andExpect(jsonPath("$[0].deptNm").value("소프트웨어학부"))
                 .andExpect(jsonPath("$[0].prerequisites", hasSize(1)))
                 .andExpect(jsonPath("$[0].prerequisites[0].prereqCrsCd").value(DATA_STRUCTURE))
                 .andExpect(jsonPath("$[0].prerequisites[0].prereqCrsNm").value("자료구조"))

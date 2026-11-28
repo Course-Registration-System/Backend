@@ -26,7 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 2027-1(11) 시드 기준: 개설 41개(폐강 227번 1개 제외), 컴퓨터학부(101) 12개, 1학년·권장학년 없음 22개, 김정훈 교수 8개. */
+/** 2027-1(11) 시드 기준: 개설 41개(폐강 227번 1개 제외), 소프트웨어학부(101) 12개, 1학년·권장학년 없음 22개, 김정훈 교수 8개. */
 @AutoConfigureMockMvc
 @Transactional
 class LectureSearchControllerTest extends IntegrationTest {

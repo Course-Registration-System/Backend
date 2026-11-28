@@ -33,7 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class TeachingAssistantControllerTest extends IntegrationTest {
 
-    /** 테스트마다 넣는 대학원생(학번 10자리, 컴퓨터학부). 어느 강의에도 배정되지 않았다. 시드의 대학원생은 조교로 이미 배정돼 있어 따로 둔다 */
+    /** 테스트마다 넣는 대학원생(학번 10자리, 소프트웨어학부). 어느 강의에도 배정되지 않았다. 시드의 대학원생은 조교로 이미 배정돼 있어 따로 둔다 */
     private static final String FREE_GRADUATE = "2026710002";
     /** 시드: 학부생(학번 8자리). Lecture.DEMO_GRADE 의 수강생이 아니다 */
     private static final String UNDERGRADUATE = Student.PASS_FAIL_ONLY;
@@ -77,7 +77,7 @@ class TeachingAssistantControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.assistants", hasSize(1)))
                 .andExpect(jsonPath("$.assistants[0].stdNo").value(Student.TEACHING_ASSISTANT))
                 .andExpect(jsonPath("$.assistants[0].usrNm").value("정대원"))
-                .andExpect(jsonPath("$.assistants[0].deptNm").value("컴퓨터학부"))
+                .andExpect(jsonPath("$.assistants[0].deptNm").value("소프트웨어학부"))
                 .andExpect(jsonPath("$.assistants[0].yrLvl").value(1))
                 .andExpect(jsonPath("$.assistants[0].email").value(Student.TEACHING_ASSISTANT + "@example.ac.kr"));
     }
@@ -108,7 +108,7 @@ class TeachingAssistantControllerTest extends IntegrationTest {
                 .andExpect(jsonPath("$.lecNo").value(Lecture.DEMO_GRADE))
                 .andExpect(jsonPath("$.assistants[*].stdNo", contains(FREE_GRADUATE)))
                 .andExpect(jsonPath("$.assistants[0].usrNm").value("나대원"))
-                .andExpect(jsonPath("$.assistants[0].deptNm").value("컴퓨터학부"));
+                .andExpect(jsonPath("$.assistants[0].deptNm").value("소프트웨어학부"));
     }
 
     @Test

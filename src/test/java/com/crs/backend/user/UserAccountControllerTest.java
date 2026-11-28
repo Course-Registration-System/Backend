@@ -83,10 +83,10 @@ class UserAccountControllerTest extends IntegrationTest {
     void 교수를_등록한다() throws Exception {
         create("""
                         {"usrNo": "109999", "password": "first-pw!", "usrNm": "새교수",
-                         "role": "PROFESSOR", "deptNo": 102, "office": "경영관 501호"}
+                         "role": "PROFESSOR", "deptNo": 102, "office": "숭덕경상관 501호"}
                         """)
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.office").value("경영관 501호"))
+                .andExpect(jsonPath("$.office").value("숭덕경상관 501호"))
                 .andExpect(jsonPath("$.yrLvl").doesNotExist());
     }
 
